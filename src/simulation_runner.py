@@ -4,6 +4,8 @@ import traci
 import os
 import argparse
 import logging
+import subprocess
+import platform
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
@@ -33,6 +35,11 @@ class SimulationRunner:
                 current_time = traci.simulation.getTime()
                 vehicle_count = traci.vehicle.getIDCount()
                 print(f"Time {current_time:.1f}s: Vehicles in simulation: {vehicle_count}")
+                
+                # End simulation if no more vehicles are expected and none are active
+                if traci.simulation.getMinExpectedNumber() == 0 and vehicle_count == 0:
+                    print("Simulation ended: No more vehicles active or expected.")
+                    break
         except traci.exceptions.FatalTraCIError:
             print("Simulation ended naturally.")
 
@@ -59,8 +66,18 @@ class SimulationRunner:
             logging.warning("Dynamic rerouting feature is not yet implemented")
 
     def close_simulation(self):
-        """Close the TraCI connection"""
+        """Close the TraCI connection and SUMO"""
         traci.close()
+        if self.gui:
+            # Force close SUMO GUI
+            try:
+                if platform.system() == "Windows": # they're special like that
+                    subprocess.run(["taskkill", "/F", "/IM", "sumo-gui.exe"], check=False, capture_output=True)
+                else:  # Linux and others
+                    subprocess.run(["pkill", "-f", "sumo-gui"], check=False, capture_output=True)
+                print("SUMO GUI closed.")
+            except Exception as e:
+                print(f"Warning: Could not close SUMO GUI: {e}")
 
 def parse_arguments():
     """Parse command line arguments"""
