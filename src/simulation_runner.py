@@ -29,19 +29,19 @@ class SimulationRunner:
         # Check for unimplemented features
         self._check_unimplemented_features()
 
+        traci.simulationStep()
+        vehicle_count = traci.vehicle.getIDCount()
         try:
-            while True:
+            while (traci.simulation.getMinExpectedNumber() != 0 and vehicle_count != 0):
                 traci.simulationStep()
                 current_time = traci.simulation.getTime()
                 vehicle_count = traci.vehicle.getIDCount()
                 print(f"Time {current_time:.1f}s: Vehicles in simulation: {vehicle_count}")
-                
-                # End simulation if no more vehicles are expected and none are active
-                if traci.simulation.getMinExpectedNumber() == 0 and vehicle_count == 0:
-                    print("Simulation ended: No more vehicles active or expected.")
-                    break
-        except traci.exceptions.FatalTraCIError:
             print("Simulation ended naturally.")
+                
+        except traci.exceptions.FatalTraCIError:
+            logging.error("Fatal TraCI error occurred. Ending simulation.")
+        
 
     def run_steps(self, num_steps):
         """Run simulation for a specified number of steps"""
