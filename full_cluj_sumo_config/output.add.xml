@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!-- generated on 2025-10-29T11:40:48.274517+02:00 by Eclipse SUMO netedit v1_24_0+1549-ae831a14bcc
+-->
+
+<additional xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/additional_file.xsd">
+    <!-- MeanDataEdges -->
+    <edgeData id="wizard_example" file="edgeData.xml" period="3600.00"/>
+</additional>
