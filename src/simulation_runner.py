@@ -4,6 +4,7 @@ import os
 import logging
 
 from base_sumo_env import BaseSumoEnvironment
+from default_sumo_env import DefaultSumoEnviroment
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
@@ -16,8 +17,9 @@ class SimulationRunner:
             config_path: Path to SUMO config file
             **kwargs: Additional arguments for the environment we work in
         """
-        if not issubclass(BaseSumoEnvironment, sumo_env):
-            raise TypeError("env_class must be a subclass of BaseSumoEnvironment")
+        # fallback to default env
+        if sumo_env is None:
+            sumo_env = DefaultSumoEnviroment
 
         self.env = sumo_env(config_path, **kwargs)
 
@@ -33,9 +35,6 @@ class SimulationRunner:
         self.env.close()
 
 def main():
-    # import here the class that implements BaseSumoEnvironment
-    from your_concrete_env import ConcreteSumoEnvironment  # Import your actual implementation
-
     # Parse command line arguments
     args = BaseSumoEnvironment.parse_arguments()
 
@@ -45,7 +44,7 @@ def main():
 
     # create simulation runner
     runner = SimulationRunner(
-        sumo_env=ConcreteSumoEnvironment,
+        sumo_env=None,
         config_path=sumo_config,
         simulation_steps=args.steps,
         gui=args.gui,
