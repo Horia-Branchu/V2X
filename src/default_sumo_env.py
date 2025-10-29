@@ -1,9 +1,9 @@
 import traci
 from base_sumo_env import BaseSumoEnvironment
 
-class ExampleSumoEnviroment(BaseSumoEnvironment):
+class DefaultSumoEnviroment(BaseSumoEnvironment):
     """
-        A simple example for a Sumo Enviroment implementation
+        A default enviroment implementation Sumo
     """
     def _take_action(self, action):
         # no actions needed for simple simulation running
