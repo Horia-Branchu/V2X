@@ -2,6 +2,7 @@
 
 import os
 import logging
+import traci
 
 from base_sumo_env import BaseSumoEnvironment
 from default_sumo_env import DefaultSumoEnviroment
@@ -23,16 +24,47 @@ class SimulationRunner:
 
         self.env = sumo_env(config_path, **kwargs)
 
+    def run_until_end(self):
+        """Run simulation until it naturally ends"""
+
+        self.env._check_unimplemented_features()
+
+        traci.simulationStep()
+        vehicle_count = traci.vehicle.getIDCount()
+        try:
+            while (traci.simulation.getMinExpectedNumber() != 0 and vehicle_count != 0):
+                traci.simulationStep()
+                current_time = traci.simulation.getTime()
+                vehicle_count = traci.vehicle.getIDCount()
+                print(f"Time {current_time:.1f}s: Vehicles in simulation: {vehicle_count}")
+
+            print("Simulation ended naturally.")
+
+        except traci.exceptions.FatalTraCIError as e:
+            logging.error(f"Fatal TraCI error occurred. Ending simulation: {e}")
+
+    def run_steps(self, num_steps):
+        """Run simulation for a specified number of steps"""
+
+        self.env._check_unimplemented_features()
+
+        for step in range(num_steps):
+            traci.simulationStep()
+            current_time = traci.simulation.getTime()
+            vehicle_count = traci.vehicle.getIDCount()
+            print(f"Step {step}: Time {current_time:.1f}s: Vehicles in simulation: {vehicle_count}")
+
     def start_simulation(self):
         """Start the SUMO simulation with TraCI"""
         self.env.reset()
 
         if self.env.simulation_steps is not None:
-            self.env.run_steps(self.env.simulation_steps)
+            self.run_steps(self.env.simulation_steps)
         else:
-            self.env.run_until_end()
+            self.run_until_end()
 
         self.env.close()
+
 
 def main():
     # Parse command line arguments

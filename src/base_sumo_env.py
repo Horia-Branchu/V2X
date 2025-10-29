@@ -14,7 +14,6 @@ class BaseSumoEnvironment(gym.Env, ABC):
                  bsm=False, tls=False, priority=False, reroute=False):
         super().__init__()
 
-        # configuration merging with Mihai?
         self.sumo_config = sumo_config
         self.simulation_steps = simulation_steps
         self.current_step = 0
@@ -80,36 +79,6 @@ class BaseSumoEnvironment(gym.Env, ABC):
         info = self._get_info()
 
         return observation, reward, terminated, truncated, info
-
-    def run_until_end(self):
-        """Run simulation until it naturally ends"""
-
-        self._check_unimplemented_features()
-
-        traci.simulationStep()
-        vehicle_count = traci.vehicle.getIDCount()
-        try:
-            while (traci.simulation.getMinExpectedNumber() != 0 and vehicle_count != 0):
-                traci.simulationStep()
-                current_time = traci.simulation.getTime()
-                vehicle_count = traci.vehicle.getIDCount()
-                print(f"Time {current_time:.1f}s: Vehicles in simulation: {vehicle_count}")
-
-            print("Simulation ended naturally.")
-
-        except traci.exceptions.FatalTraCIError as e:
-            logging.error(f"Fatal TraCI error occurred. Ending simulation: {e}")
-
-    def run_steps(self, num_steps):
-        """Run simulation for a specified number of steps"""
-
-        self._check_unimplemented_features()
-
-        for step in range(num_steps):
-            traci.simulationStep()
-            current_time = traci.simulation.getTime()
-            vehicle_count = traci.vehicle.getIDCount()
-            print(f"Step {step}: Time {current_time:.1f}s: Vehicles in simulation: {vehicle_count}")
 
     def close(self):
         try:
