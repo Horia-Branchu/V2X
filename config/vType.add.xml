@@ -1,0 +1,7 @@
+<additional>
+    <vType id="passenger" accel="2.6" decel="4.5" length="5" maxSpeed="13.9"/>
+    <vType id="bus" accel="1.2" decel="4.0" length="12" maxSpeed="11"/>
+    <vType id="ambulance" vClass="emergency" speedFactor="1.3" guiShape="emergency">
+        <param key="has.bluelight.device" value="true"/>
+    </vType>
+</additional>
