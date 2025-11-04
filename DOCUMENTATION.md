@@ -10,7 +10,7 @@
 │   ├── agents <br>
 │   │   └── ppo.py <br>
 │   ├── [base_sumo_env.py](#base-sumo-environment-class) <br>
-│   ├── default_sumo_env.py <br>
+│   ├── [default_sumo_env.py](#simulation-runner-class) <br>
 │   └── simulation_runner.py <br>
 
 
@@ -130,3 +130,45 @@ Initializes the traffic simulation environment.
 **What it does:**
 
 
+# Simulation Runner Class
+
+### Constructor:
+Starts the simulation and handles the V2X related implementations.
+
+**Input**
+- `config_path` (str): Path to SUMO configuration file
+- `sumo_env` (class): Concrete implementation of BaseSumoEnvironment (optional, defaults to DefaultSumoEnvironment)
+- `**kwargs`: Additional arguments passed to the environment
+
+**Output:** `None` (initializes object state)
+
+**What it does:** Creates a simulation environment instance, falling back to DefaultSumoEnvironment if none provided, and initializes the environment with the given configuration and arguments.
+
+### run_until_end
+**Input:** `None`
+
+**Output:** `None`
+
+**What it does:** Runs the simulation until it naturally ends by checking if there are no more expected vehicles and no active vehicles. Logs vehicle count at each step and handles TraCI fatal errors 'gracefully'.
+
+### run_steps
+**Input:**
+- `num_steps` (int): Number of simulation steps to run
+
+**Output:** `None`
+
+**What it does:** Runs the simulation for a specified number of steps, logging the current time and vehicle count at each step.
+
+### start_simulation
+**Input:** `None`
+
+**Output:** `None`
+
+**What it does:** Resets the environment, runs the simulation either for a fixed number of steps (if simulation_steps is set) or until natural end, then closes the environment.
+
+### main
+**Input:** `None`
+
+**Output:** `None`
+
+**What it does:** Entry point for running the simulation, sets up the environment and starts the simulation process.
