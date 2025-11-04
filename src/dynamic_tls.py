@@ -1,0 +1,143 @@
+import traci
+import time
+
+# Distance threshold between an incoming vehicle and a traffic light (in meters)
+detection_range = 50
+
+
+# Time by which the green light will be exteded (in seconds)
+extend_time = 5
+
+# Types of the emergency vehicles
+emergency_types = ["ambulance", "fire engine", "police", "emergency"]
+
+# Stores times at which tls overrides were done in the simulation
+tls_override_times = {}
+
+# Returns distance from vehivle to tls
+def get_distance_to_tls(v_id, tls_id):
+    try:
+        dist = traci.vehicle.getDrivingDistance(v_id,tls_id)
+        return dist
+    except:
+        return float("inf")
+
+# Groups appraching vehicles by lane within the detection range
+def get_approaching_vehicles_by_lane(tls_id, detection_range):
+    lanes = traci.trafficlight.getControlledLanes(tls_id)
+    approaching = {}
+
+    for lane_id in lanes:
+        vehicle_ids = traci.lane.getLastStepVehicleIDs(lane_id)
+        near_tls = []
+
+        for v_id in vehicle_ids:
+            if traci.lane.getLength(lane_id) - traci.vehicle.getLanePosition(v_id) < detection_range:
+                near_tls.append(v_id)
+
+        if near_tls:
+            approaching[lane_id] = near_tls
+
+    return approaching
+
+# Returns all lanes belonging to a strret assuming consisntent naming(eg. 526477801#1_0,526477801#1_1)
+def get_lanes_on_same_street(tls_id, lane_id):
+    prefix = lane_id.split('#')[0]
+    all_lanes = traci.trafficlight.getControlledLanes(tls_id)
+    same_street_lanes = [lane for lane in all_lanes if lane.startswith(prefix)]
+    return same_street_lanes
+
+#Sets TLS light for named vehicle to green
+def set_tls_green_for_vehicle(tls_id, v_id):
+    lane_id = traci.vehicle.getLaneID(v_id)
+    tls_state = list(traci.trafficlight.getRedYellowGreenState(tls_id))
+    controlled_links = traci.trafficlight.getControlledLinks(tls_id)
+
+    street_lanes = get_lanes_on_same_street(tls_id,lane_id)
+
+    for i, links in enumerate(controlled_links):
+        lane_found = any(link[0] in street_lanes for link in links)
+        tls_state[i] = 'G' if lane_found else 'r'
+
+    traci.trafficlight.setRedYellowGreenState(tls_id,''.join(tls_state))
+
+# Checks if the TLS light for the named vehicle is green
+def is_lane_green(tls_id,v_id):
+    tls_state = traci.trafficlight.getRedYellowGreenState(tls_id)
+
+    lane_id = traci.vehicle.getLaneID(v_id).split('#')[0]
+    controlled_links = traci.trafficlight.getControlledLinks(tls_id)
+
+    street_links = []
+
+    for i, links in enumerate(controlled_links):
+        for link in links:
+            if link[0].startswith(lane_id) and tls_state[i].lower() != 'g':
+                return False
+    return True
+    
+def is_emergency_vehicle(v_id):
+    v_type = traci.vehicle.getTypeID(v_id)
+    return v_type in emergency_types
+
+# Prints SPaT (Signal Phase and Timing) messages to console
+def spat_message_log(message):
+    timestamp = traci.simulation.getTime()
+    log_message = f"[{timestamp:.1f}s] {message}"
+    print (log_message)
+
+# Main dynamic TLS control function:
+# - detects vehicles approaching intersections
+# - prioritizes energency vehicles
+# - extends geern lights dynamically
+# - switches light to green if only one direction has vehicles
+# - restores default TLS program after manual overrides
+def dynamic_tls_control(tls_id):
+    global tls_override_times
+    current_time = traci.simulation.getTime()
+    tls_lanes = traci.trafficlight.getControlledLanes(tls_id)
+    vehicle_list = traci.vehicle.getIDList()
+
+    # Checks if an override is already active and reverts to normal if time expired
+    if tls_id in tls_override_times:
+        if current_time - tls_override_times[tls_id] >= extend_time:
+            traci.trafficlight.setProgram(tls_id,"0")
+            spat_message_log(f"TLS {tls_id} returning to normal program")
+            del tls_override_times[tls_id]
+
+    for v_id in vehicle_list:
+        lane_id = traci.vehicle.getLaneID(v_id)
+        if lane_id not in tls_lanes:
+            continue
+
+        lane_length = traci.lane.getLength(lane_id)
+        distance_to_tls = lane_length - traci.vehicle.getLanePosition(v_id)
+
+        if distance_to_tls < detection_range:
+            # Case 1: Emergency vehicle
+            if is_emergency_vehicle(v_id):
+                set_tls_green_for_vehicle(tls_id, v_id)
+                traci.trafficlight.setPhaseDuration(tls_id, extend_time)
+                tls_override_times[tls_id] = current_time
+                spat_message_log(f"Emergency vehicle {v_id} detected near {tls_id}, forcing GREEN")
+                return
+            
+            remaining = traci.trafficlight.getNextSwitch(tls_id) - traci.simulation.getTime()
+
+            # Case 2: Extend already green light
+            if is_lane_green(tls_id, v_id) and remaining < extend_time:
+                traci.trafficlight.setPhaseDuration(tls_id, extend_time)
+                spat_message_log(f"Vehicle {v_id} approaching {tls_id}, extending GREEN for {extend_time}s.")
+                return
+            
+            #Case 3: Turn green if only one lane is approaching
+            approaching = get_approaching_vehicles_by_lane(tls_id, detection_range)
+
+            if len(approaching) == 1 and lane_id in approaching:
+                if not is_lane_green(tls_id, v_id):
+                    set_tls_green_for_vehicle(tls_id, v_id)
+                    traci.trafficlight.setPhaseDuration(tls_id, extend_time)
+                    tls_override_times[tls_id] = current_time
+                    spat_message_log(f"Only vehicles on lane {lane_id} near {tls_id}, switching to GREEN")
+                return
+    return

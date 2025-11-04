@@ -35,8 +35,6 @@ class BaseSumoEnvironment(gym.Env, ABC):
         """Log warnings for features that are enabled but not yet implemented"""
         if self.bsm:
             logging.warning("BSM (Basic Safety Message) feature is not yet implemented")
-        if self.tls:
-            logging.warning("TLS (Traffic Light System) control feature is not yet implemented")
         if self.priority:
             logging.warning("Priority vehicle handling feature is not yet implemented")
         if self.reroute:

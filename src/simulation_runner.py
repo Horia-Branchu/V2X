@@ -6,6 +6,7 @@ import traci
 
 from base_sumo_env import BaseSumoEnvironment
 from default_sumo_env import DefaultSumoEnviroment
+import dynamic_tls
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
@@ -36,6 +37,11 @@ class SimulationRunner:
                 traci.simulationStep()
                 current_time = traci.simulation.getTime()
                 vehicle_count = traci.vehicle.getIDCount()
+                tls_ids = traci.trafficlight.getIDList()
+
+                for tls_id in tls_ids:
+                    dynamic_tls.dynamic_tls_control(tls_id)
+
                 print(f"Time {current_time:.1f}s: Vehicles in simulation: {vehicle_count}")
 
             print("Simulation ended naturally.")
