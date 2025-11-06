@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -9,9 +7,14 @@ from pathlib import Path
 def find_latest_csv(root_dir: Path, filename="vehicles.csv"):
     """Search for the newest matching CSV in the project folder"""
 
+    print(f"Correlation Map for {root_dir}\n"
+          f"Correlation Map is generating")
+
     candidates = list(root_dir.rglob(filename))
-    if not candidates:
+    if len(candidates) == 0:
         return None
+
+    ###Sorting files by the last modification time
     candidates.sort(key=lambda f: f.stat().st_mtime, reverse=True)
     return candidates[0]
 
@@ -24,31 +27,20 @@ def generate_correlation_map():
     if not csv_path or not csv_path.exists():
         print(f"Could not find any vehicles.csv file in the project"
               "Run the simulation first so DataCollector generates it")
-        return
-
+        return None
 
     df = pd.read_csv(csv_path,low_memory=False)
-    #Dropping irrelevant columns
-    cols_to_drop = [col for col in ["time", "veh_id"] if col in df.columns]
-    if cols_to_drop:
-
-        df_filtered = df.drop(columns=cols_to_drop)
-    else:
-        df_filtered = df.copy()
-
-    # Saving filtered copy of the file
-    filtered_path = csv_path.parent / "vehicles_filtered.csv"
-    df_filtered.to_csv(filtered_path, index=False)
-
-    num_df = df_filtered.select_dtypes(include=np.number)
+    num_df = df.select_dtypes(include=np.number)
     if num_df.empty:
         print("No numeric columns found for correlation")
-        return
+        return None
+
+    columns_to_remove = ["veh_id", "trip_time", "distance"]
+    for column in columns_to_remove:
+        if column  in  num_df.columns:
+            num_df.drop(column, axis=1, inplace=True)
 
     corr_matrix = num_df.corr(method="pearson")
-    # Sorting columns so CO2 appears first in the heatmap
-    cols_sorted = sorted(corr_matrix.columns, key=lambda c: 0 if "co2" in c.lower() else 1)
-    corr_matrix = corr_matrix.loc[cols_sorted, cols_sorted]
 
     plt.figure(figsize=(10, 7))
     sns.heatmap(
@@ -56,17 +48,15 @@ def generate_correlation_map():
         annot=True,
         fmt=".2f",
         cmap="coolwarm",
-        cbar_kws={"label": "Pearson correlation"},
+        cbar_kws={"label": "Label Correlation"},
         square=True
     )
     plt.title("Feature Correlation Map with CO2 Consumption", fontsize=14, pad=12)
     plt.tight_layout()
-
     output_path = csv_path.parent / "co2_correlation_map.png"
     plt.savefig(output_path, dpi=150)
-    plt.show()
-
-
+    print("Done")
 
 if __name__ == "__main__":
+    print(__file__)
     generate_correlation_map()
