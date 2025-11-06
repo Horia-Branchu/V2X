@@ -118,14 +118,15 @@ def plot_co2_vs_jerk(df, out_dir):
 
 def plot_min_speed_per_edge(df, out_dir):
     """Plot top routes or edges by minimum vehicle speed
-        We set it to 30"""
+        We set it to 20"""
     if not {"edge", "speed"}.issubset(df.columns):
         print(f"Missing edge or speed column for max speed per edge")
         return None
 
     df_min_speed_per_edge = df.groupby('edge')['speed'].max().reset_index()
-    top_smaller = df_min_speed_per_edge.sort_values(by='speed', ascending=True).head(30)
-
+    # Inactive streets
+    df_min_speed_per_edge = df_min_speed_per_edge[df_min_speed_per_edge['speed'] > 0]
+    top_smaller = df_min_speed_per_edge.sort_values(by='speed', ascending=True).head(20)
 
     plt.figure(figsize=(14, 7))
     sns.barplot(
