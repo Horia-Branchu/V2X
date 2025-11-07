@@ -4,6 +4,7 @@ import logging
 import platform
 import subprocess
 import numpy as np
+from dummy_feature import DummyFeature
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
@@ -31,20 +32,24 @@ class BaseSumoEnvironment(gym.Env):
 
     # to be implemented in the future of RL
     def _setup_spaces(self):
-        pass
+        self.observation_space = gym.spaces.Box(low=0, high=1, shape=(1,))
+        self.action_space = gym.spaces.Discrete(1)
+        return
 
     # crucial step for V2X people
     # when you implement a feature, import it here and add it to the feature
-    # space ( I left an example for BSM )
+    # space ( I left dummy examples )
     def _setup_features(self, bsm, tls, priority, reroute):
         """Initialize features based on flags"""
         self.features = []
-        # if bsm:
-            # from features.bsm_feature import BSMFeature
-            # self.features.append(BSMFeature())
-        # if tls:
-        # if priority:
-        # if reroute:
+        if bsm:
+            self.features.append(DummyFeature("BSMFeature"))
+        if tls:
+            self.features.append(DummyFeature("TLSFeature"))
+        if priority:
+            self.features.append(DummyFeature("PriorityFeature"))
+        if reroute:
+            self.features.append(DummyFeature("RerouteFeature"))
 
     def _build_sumo_command(self):
         base_cmd = ["sumo-gui" if self.gui else "sumo", "-c", self.sumo_config]
