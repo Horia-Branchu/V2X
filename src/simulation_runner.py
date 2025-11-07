@@ -11,13 +11,14 @@ from base_sumo_env import BaseSumoEnvironment
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 
 class SimulationRunner:
-    def __init__(self, config_path, sumo_env, **kwargs):
+    def __init__(self, config_path, sumo_env, steps, **kwargs):
         """
         Arguments:
             sumo_env: A concrete implementation of BaseSumoEnvironment
             config_path: Path to SUMO config file
             **kwargs: Additional arguments for the environment we work in
         """
+        self.simulation_steps = steps
         if isinstance(sumo_env, BaseSumoEnvironment):
             # we were given an environment instance
             self.env = sumo_env
@@ -26,14 +27,13 @@ class SimulationRunner:
             env_class = sumo_env if sumo_env else BaseSumoEnvironment
             self.env = env_class(config_path, **kwargs)
 
-    def run_manual_feature_test(self, num_steps=1000):
+    def run_manual_feature_test(self):
         print("------ Feature testing mode ------")
         print(f"active features: {[f.get_feature_name() for f in self.env.features]}")
 
         obs, _ = self.env.reset()
 
-        for step in range(num_steps):
-            # generate random actions to test feature responses
+        def simulation_logic(current_step):
             action = self.env.action_space.sample()
 
             # step the environment
@@ -41,26 +41,47 @@ class SimulationRunner:
 
             if terminated or truncated:
                 obs, _ = self.env.reset()
-                print(f"------ simulation reseted at step {step} ------")
+                print(f"------ simulation reseted at step {current_step} ------")
+
+        if self.simulation_steps is not None:
+            for current_step in range(self.simulation_steps):
+                simulation_logic(current_step)
+        else:
+            current_step = 0
+            while (traci.simulation.getMinExpectedNumber() != 0):
+                simulation_logic(current_step)
+                current_step += 1
 
         self.env.close()
 
-    def test_specific_feature(self, feature_name, num_steps=500):
+    def test_specific_feature(self, feature_name):
         """Test a specific feature in isolation"""
         print(f"------ Isolated feature testing: {feature_name} ------")
 
         obs, _ = self.env.reset()
 
-        for step in range(num_steps):
+        def simulation_logic(current_step):
             # custom action logic for specific feature testing
-            action = self._get_feature_specific_action(feature_name, step)
+            action = self._get_feature_specific_action(feature_name, current_step)
 
             obs, reward, terminated, truncated, info = self.env.step(action)
 
-            print(f"Step {step}: {feature_name}")
+            print(f"Step {current_step}: {feature_name}")
 
             if terminated or truncated:
-                break
+                return -1
+
+        if self.simulation_steps is not None:
+            for current_step in range(self.simulation_steps):
+                if simulation_logic(current_step) == -1:
+                    break
+        else:
+            current_step = 0
+            while (traci.simulation.getMinExpectedNumber() != 0):
+                if simulation_logic(current_step) == -1:
+                    break
+                current_step += 1
+
 
         self.env.close()
 
@@ -85,10 +106,10 @@ class SimulationRunner:
         except traci.exceptions.FatalTraCIError as e:
             logging.error(f"Fatal TraCI error occurred. Ending simulation: {e}")
 
-    def run_steps(self, num_steps):
+    def run_with_steps(self):
         """Run simulation for a specified number of steps"""
 
-        for step in range(num_steps):
+        for step in range(self.simulation_steps):
             traci.simulationStep()
             current_time = traci.simulation.getTime()
             vehicle_count = traci.vehicle.getIDCount()
@@ -98,8 +119,8 @@ class SimulationRunner:
         """Start the SUMO simulation with TraCI"""
         self.env.reset()
 
-        if self.env.simulation_steps is not None:
-            self.run_steps(self.env.simulation_steps)
+        if self.simulation_steps is not None:
+            self.run_with_steps()
         else:
             self.run_until_end()
 
@@ -112,7 +133,7 @@ class SimulationRunner:
         parser.add_argument(
             "--steps",
             type=int,
-            default=1000,
+            default=None,
             help="Number of steps to run the simulation"
         )
         parser.add_argument(
@@ -157,7 +178,6 @@ def main():
 
     env = BaseSumoEnvironment(
         sumo_config,
-        simulation_steps=args.steps,
         gui=args.gui,
         bsm=args.bsm,
         tls=args.tls,
@@ -165,7 +185,7 @@ def main():
         reroute=args.reroute
     )
 
-    runner = SimulationRunner(sumo_config, sumo_env=env)
+    runner = SimulationRunner(sumo_config, steps=args.steps, sumo_env=env)
 
     enabled_features = []
     if args.bsm: enabled_features.append("bsm")
@@ -175,12 +195,12 @@ def main():
 
     # run appropriate testing based on arguments
     if args.test_all:
-        runner.run_manual_feature_test(args.steps)
+        runner.run_manual_feature_test()
     elif len(enabled_features) == 1:
-        runner.test_specific_feature(enabled_features[0], args.steps)
+        runner.test_specific_feature(enabled_features[0])
     elif len(enabled_features) > 1:
         print(f"Multiple features enabled: {enabled_features}, using manual test mode")
-        runner.run_manual_feature_test(args.steps)
+        runner.run_manual_feature_test()
     else:
         runner.start_simulation()
 

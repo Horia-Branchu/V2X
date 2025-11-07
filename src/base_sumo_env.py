@@ -10,12 +10,11 @@ from dummy_feature import DummyFeature
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 
 class BaseSumoEnvironment(gym.Env):
-    def __init__(self, sumo_config, simulation_steps=1000, gui=True,
+    def __init__(self, sumo_config, gui=True,
                  bsm=False, tls=False, priority=False, reroute=False):
         super().__init__()
 
         self.sumo_config = sumo_config
-        self.simulation_steps = simulation_steps
         self.current_step = 0
         self.gui = gui
 
@@ -90,7 +89,7 @@ class BaseSumoEnvironment(gym.Env):
         observation = self._get_observation()
         reward = self._calculate_reward()
         terminated = self._is_terminated()
-        truncated = self._is_truncated()
+        truncated = False
         info = self._get_info()
 
         return observation, reward, terminated, truncated, info
@@ -137,8 +136,8 @@ class BaseSumoEnvironment(gym.Env):
         """Override this for scenario-specific termination"""
         return False
 
-    def _is_truncated(self):
-        return self.current_step >= self.simulation_steps
+    # def _is_truncated(self):
+    #     return self.current_step >= self.simulation_steps
 
     def _get_info(self):
         info = {
