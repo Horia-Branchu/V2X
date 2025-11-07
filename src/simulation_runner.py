@@ -78,7 +78,7 @@ class SimulationRunner:
             #Extracting file location
             project_root = Path(__file__).resolve().parents[1]
             csv_path = plots.find_latest_csv(project_root, "vehicles.csv")
-            print(f"Csv path {csv_path}"
+            print(f"Csv path {csv_path}\n"
                   f"Plotting data")
             #Reading the csv file
             df = pd.read_csv(csv_path, low_memory=False)
