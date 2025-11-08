@@ -4,19 +4,32 @@ import logging
 import platform
 import subprocess
 import numpy as np
+import threading
+import itertools
+import sys
+import time
 from dummy_feature import DummyFeature
 
-# Set up logging
-logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
+# use a named logger for the project; features can log at DEBUG for RL and INFO for rule-based
+logger = logging.getLogger("v2x")
+if not logger.handlers:
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter('%(levelname)s: %(message)s'))
+    logger.addHandler(handler)
 
 class BaseSumoEnvironment(gym.Env):
     def __init__(self, sumo_config, gui=True,
-                 bsm=False, tls=False, priority=False, reroute=False):
+                 bsm=False, tls=False, priority=False, reroute=False, rl=False):
         super().__init__()
 
         self.sumo_config = sumo_config
         self.current_step = 0
         self.gui = gui
+        # whether this environment is used for RL (verbose per-step logs) or rule-based
+        self.rl = rl
+
+        # configure logger level for RL vs rule-based runs
+        logger.setLevel(logging.DEBUG if self.rl else logging.INFO)
 
         # feature management
         self.features = []
@@ -60,7 +73,16 @@ class BaseSumoEnvironment(gym.Env):
         except Exception:
             pass
 
-        traci.start(self.sumo_cmd)
+        # start SUMO with a CLI spinner to indicate progress while SUMO loads files
+        stop_event = threading.Event()
+        spinner_thread = threading.Thread(target=self._startup_spinner, args=(stop_event,), daemon=True)
+        spinner_thread.start()
+        try:
+            traci.start(self.sumo_cmd)
+        finally:
+            # always stop spinner whether start succeeded or raised
+            stop_event.set()
+            spinner_thread.join()
         self.current_step = 0
 
         for feature in self.features:
@@ -73,6 +95,29 @@ class BaseSumoEnvironment(gym.Env):
 
         return observation, info
 
+    def _startup_spinner(self, stop_event):
+        """Simple CLI spinner shown while SUMO is starting.
+
+        Runs until stop_event is set. Keeps output minimal and compatible with
+        Windows PowerShell and typical terminals.
+        """
+        try:
+            for ch in itertools.cycle('|/-\\'):
+                if stop_event.is_set():
+                    break
+                sys.stdout.write(f"\rStarting SUMO... {ch}")
+                sys.stdout.flush()
+                time.sleep(0.12)
+        except Exception:
+            # don't crash startup on spinner errors
+            pass
+        finally:
+            try:
+                sys.stdout.write('\rSUMO startup complete.    \n')
+                sys.stdout.flush()
+            except Exception:
+                pass
+
     def step(self, action):
         # distribute action to features
         self._take_action(action)
@@ -80,6 +125,15 @@ class BaseSumoEnvironment(gym.Env):
         # advance simulation
         traci.simulationStep()
         self.current_step += 1
+
+        # log concise vehicle count per step so any caller of env.step() sees it
+        try:
+            current_time = traci.simulation.getTime()
+            vehicle_count = traci.vehicle.getIDCount()
+            logger.info(f"Time {current_time:.1f}s: Vehicles in simulation: {vehicle_count}")
+        except Exception:
+            # if traci not available or hasn't started yet, skip logging
+            pass
 
         # linear stepping for each feature
         for feature in self.features:
@@ -150,7 +204,7 @@ class BaseSumoEnvironment(gym.Env):
         try:
             traci.close()
         except Exception as e:
-            logging.error(f"Traci could not be closed: {e}")
+            logger.error(f"Traci could not be closed: {e}")
             pass
 
         if self.gui:
@@ -160,6 +214,6 @@ class BaseSumoEnvironment(gym.Env):
                     subprocess.run(["taskkill", "/F", "/IM", "sumo-gui.exe"], check=False, capture_output=True)
                 else:  # Linux and others
                     subprocess.run(["pkill", "-f", "sumo-gui"], check=False, capture_output=True)
-                print("SUMO GUI closed.")
+                logger.info("SUMO GUI closed.")
             except Exception as e:
-                print(f"Warning: Could not close SUMO GUI: {e}")
+                logger.warning(f"Could not close SUMO GUI: {e}")
