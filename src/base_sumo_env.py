@@ -16,6 +16,7 @@ if not logger.handlers:
     handler = logging.StreamHandler()
     handler.setFormatter(logging.Formatter('%(levelname)s: %(message)s'))
     logger.addHandler(handler)
+    logging.getLogger("v2x").setLevel(logging.INFO) # set default level to INFO, can be overridden later, RL will set to DEBUG
 
 class BaseSumoEnvironment(gym.Env):
     def __init__(self, sumo_config, gui=True,
