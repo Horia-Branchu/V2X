@@ -1,7 +1,10 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
+import numpy as np
 from pathlib import Path
+
+
 
 def find_latest_csv(root_dir: Path, filename="vehicles.csv"):
     """Find vehicles.csv file within the project"""
@@ -13,31 +16,43 @@ def find_latest_csv(root_dir: Path, filename="vehicles.csv"):
     candidates.sort(key=lambda f: f.stat().st_mtime, reverse=True)
     return candidates[0]
 
-def plot_co2_over_time(df, out_dir):
-    """Plot average CO2 emission over simulation time"""
+def plot_speed_vs_route_avg_speed(df, out_dir):
+    """Plot Speed vs Route Average Speed"""
 
-    if not {"time", "co2"}.issubset(df.columns):
+    if not {"speed", "route_avg_speed"}.issubset(df.columns):
+        print(f"Missing speed or route_avg_speed columns.")
         return None
 
-    #I limited t = 860 because vehicles start disappearing afterwards
-    df_until_900 = df[df["time"] <= 860]
-
-    avg_by_time = df_until_900.groupby("time")["co2"].mean()
     with sns.axes_style("darkgrid"):
-        plt.figure(figsize=(8, 5))
-        plt.plot(avg_by_time.index, avg_by_time.values, color="#3C096C")
-        plt.xlabel("Time (s)")
-        plt.ylabel("Average CO2")
-        plt.title("Average Network CO2 Emission Over Time", style='italic')
-        plt.xticks(rotation=90)
+        plt.figure(figsize=(10, 8))
+        sns.scatterplot(
+            data=df,
+            x="route_avg_speed",
+            y="speed",
+            color="#3CB371",
+            alpha=0.25,
+            s=10
+        )
+        sns.regplot(
+            data=df,
+            x="route_avg_speed",
+            y="speed",
+            scatter=False,
+            color="#2F4F4F",
+            line_kws={"lw": 2}
+        )
+        plt.xlabel("Speed")
+        plt.ylabel("Route Average Speed (m/s)")
+        plt.title("Speed vs Route Average Speed (m/s) Before V2X", style="italic")
         plt.tight_layout()
-        plt.savefig(out_dir / "plot_co2_time.png", dpi=150)
+        plt.savefig(out_dir / "plot_speed_vs_route_avg_speed.png", dpi=150)
         plt.close()
 
 def plot_accel_vs_co2(df, out_dir):
     """Plot acceleration versus CO2 emission with regression line"""
 
     if not {"accel", "co2"}.issubset(df.columns):
+        print(f"Missing accel or co2 column")
         return None
 
     df_filtered = df[df["co2"] > 1]
@@ -47,21 +62,24 @@ def plot_accel_vs_co2(df, out_dir):
             data=df_filtered,
             x="accel",
             y="co2",
-            scatter_kws={'alpha': 0.2, 's': 10, 'color': '#3C096C'},
+            scatter_kws={'alpha': 0.4, 's': 10, 'color': '#3C096C'},
             line_kws={'color': '#FFC880', 'linewidth': 2}
         )
-        plt.title("Acceleration vs CO2 Emission", style='italic')
+        plt.title("Acceleration vs CO2 Emission Before V2X", style='italic')
         plt.xlabel("Acceleration (m/s)")
         plt.ylabel("CO2 (mg/s)")
         plt.tight_layout()
         plt.savefig(out_dir / "plot_accel_co2.png", dpi=150)
         plt.close()
+        return None
 
 def plot_speed_vs_co2(df, out_dir):
     """Plot speed versus CO2 emission with regression trendline"""
 
     if not {"speed", "co2"}.issubset(df.columns):
+        print("Missing 'speed' or 'co2' column")
         return None
+
     df_non0 = df[(df["co2"] > 1) & (df["speed"] > 1)]
     with sns.axes_style("whitegrid"):
         plt.figure(figsize=(8, 6))
@@ -69,22 +87,22 @@ def plot_speed_vs_co2(df, out_dir):
             data=df_non0,
             x="speed",
             y="co2",
-            scatter_kws={'alpha': 0.9, 's': 10, 'color': '#6C5952'},
-            line_kws={'color': '#355E3B', 'linewidth': 2}
+            scatter_kws={'alpha': 0.6, 's': 10, 'color': '#1A80BB'},
+            line_kws={'color': '#B8B8B8', 'linewidth': 2}
         )
-        plt.title("Speed vs CO2 Emission", style='italic')
+        plt.title("Speed vs CO2 Emission Before V2X", style='italic')
         plt.xlabel("Speed (m/s)")
         plt.ylabel("CO2 (mg/s)")
         plt.tight_layout()
         plt.savefig(out_dir / "plot_speed_co2.png", dpi=150)
         plt.close()
-
+        return None
 
 def plot_co2_vs_jerk(df, out_dir):
     """Plot CO2 emission versus Jerk"""
 
     if not {"jerk", "co2"}.issubset(df.columns):
-        print(f"Missing jerk or co2 column for co2 vs jerk plot")
+        print(f"Missing jerk or co2 column")
         return None
 
     with sns.axes_style("darkgrid"):
@@ -108,59 +126,70 @@ def plot_co2_vs_jerk(df, out_dir):
         )
         #Just a preference in this case
         plt.legend().remove()
-        plt.title("CO2 Emission vs Jerk", style='italic')
+        plt.title("CO2 Emission vs Jerk Before V2X", style='italic')
         plt.xlabel("Jerk")
         plt.ylabel("CO2 Emission(mg/s)")
         plt.tight_layout()
         plt.savefig(out_dir / "plot_co2_jerk.png", dpi=150)
         plt.close()
-
-
-def plot_min_speed_per_edge(df, out_dir):
-    """Plot top routes or edges by minimum vehicle speed
-        We set it to 20"""
-    if not {"edge", "speed"}.issubset(df.columns):
-        print(f"Missing edge or speed column for max speed per edge")
         return None
 
-    df_min_speed_per_edge = df.groupby('edge')['speed'].max().reset_index()
-    # Inactive streets
-    df_min_speed_per_edge = df_min_speed_per_edge[df_min_speed_per_edge['speed'] > 0]
-    top_smaller = df_min_speed_per_edge.sort_values(by='speed', ascending=True).head(20)
+def compute_stop_durations(df):
+    """We treat a car as stopped if it s speed it s below 0.1
+    (the same logic as in the data_collector.py file)"""
 
-    plt.figure(figsize=(14, 7))
-    sns.barplot(
-        data=top_smaller,
-        x='edge', y='speed',
-        hue='edge',
-        palette='viridis',
-        legend=False
-    )
-    plt.title('Top 20 Minimum Speed per Edge', style='italic')
-    plt.xlabel('Route/Edge')
-    plt.ylabel('Minimum Speed (m/s)')
-    plt.xticks(rotation=90)
-    plt.tight_layout()
-    plt.savefig(out_dir / "plot_min_speed_per_edge.png", dpi=150)
-    plt.close()
+    df["is_stopped"] = (df["speed"] < 0.1).astype(bool)
+    labels = []
+    #Creating "tables" for each veh id with df.groupby"
+    for vid, veh_grp in df.groupby("veh_id"):
+        tot_stop = veh_grp["is_stopped"].sum()
+        no_stops = veh_grp["stops"].max()
+        if no_stops > 0:
+            avg_st_time = tot_stop/no_stops
+        else:
+            #To avoid dividing it by 0
+            avg_st_time = 0.1
+        labels.append({
+            "veh_id": vid,
+            "total_st_time": tot_stop,
+            "avg_st_time": avg_st_time
+        })
+    return pd.DataFrame(labels)
 
-
-def plot_speed_over_time(df, out_dir):
-    """Plot average vehicle speed over time"""
-
-    if not {"time", "speed"}.issubset(df.columns):
-        print(f"Missing 'time' or 'speed' column for speed over time.")
-        return None
+def plot_stop_duration_vs_speed(df, out_dir):
+    stop_df = compute_stop_durations(df)
+    #Grouping mean speed per veh id
+    df_avg_speed = df.groupby("veh_id")["speed"].mean()
+    #Resetting column direction
+    df_avg_speed.reset_index(name="avg_speed")
+    df_st_time = pd.merge(stop_df, df_avg_speed, on="veh_id")
+    df_st_time = df_st_time[(df_st_time["avg_speed"] <= 20) & (df_st_time["total_st_time"] <= 300)]
 
     with sns.axes_style("darkgrid"):
-        plt.figure(figsize=(12, 6))
-        sns.lineplot(data=df, x='time', y='speed', color='royalblue')
-        plt.title('Speed over Time')
-        plt.xlabel('Time')
-        plt.ylabel('Speed (m/s)')
+        plt.figure(figsize=(8, 6))
+        sns.scatterplot(
+            data=df_st_time,
+            x="avg_speed",
+            y="total_st_time",
+            color="#4682B4",  # steel blue
+            alpha=0.5,
+            s=30
+        )
+        sns.regplot(
+            data=df_st_time,
+            x="avg_speed",
+            y="total_st_time",
+            scatter=False,
+            color="#FF6347",
+            line_kws={"lw": 2}
+        )
+        plt.xlabel("Average Speed (m/s)")
+        plt.ylabel("Total Time Spent Below 1m/s")
+        plt.title("Stop Duration vs Average Speed Before V2X", style="italic")
         plt.tight_layout()
-        plt.savefig(out_dir / "plot_speed_over_time.png", dpi=150)
+        plt.savefig(out_dir / "plot_stop_duration_vs_speed.png", dpi=150)
         plt.close()
+
 
 def main():
     """Find the latest vehicles.csv and generate all performance plots"""
@@ -169,7 +198,7 @@ def main():
     csv_path = find_latest_csv(project_root, "vehicles.csv")
 
     if not csv_path or not csv_path.exists():
-        print(f"No vehicles.csv found. Run the simulation first.")
+        print(f"No vehicles.csv found. Run the simulation first")
         return None
 
     #Timestamp for starting the dataset
@@ -180,13 +209,11 @@ def main():
     out_dir = csv_path.parent
 
     #Displaying Functions
-    plot_co2_over_time(df, out_dir)
+    plot_speed_vs_route_avg_speed(df, out_dir)
     plot_accel_vs_co2(df, out_dir)
     plot_speed_vs_co2(df, out_dir)
-    plot_min_speed_per_edge(df, out_dir)
-    plot_speed_over_time(df, out_dir)
     plot_co2_vs_jerk(df, out_dir)
-    #Timestamp for dataset ending
+    plot_stop_duration_vs_speed(df, out_dir)
     print(f"All plots are done")
 
 
