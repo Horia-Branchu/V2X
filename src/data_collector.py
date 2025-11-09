@@ -8,10 +8,9 @@ import argparse
 
 import logging
 from pathlib import Path
-from analysis import plots,geo_plots
 
 class DataCollector:
-    def __init__(self, out_dir="data", batch_size=50, reset_on_start=True):
+    def __init__(self, out_dir="data", batch_size=1000, reset_on_start=True):
                 self.out_dir = Path(out_dir)
                 self.batch_size = batch_size
                 self.buffer = []
@@ -135,10 +134,9 @@ class DataCollector:
 
     def run_loop(self, steps=None):
         traci.simulationStep()
-        #I took it from the simulation_runner
+        #run the simulation normally
         if steps is None:
           try:
-
             vehicle_count = traci.vehicle.getIDCount()
             while traci.simulation.getMinExpectedNumber() != 0 and vehicle_count != 0:
                 current_time = traci.simulation.getTime()
@@ -150,6 +148,7 @@ class DataCollector:
           except traci.exceptions.FatalTraCIError as e:
             logging.error(f"Fatal TraCI error occurred. Ending simulation: {e}")
         else:
+        #run for a fixed number of simulation steps
           try:
             for step in range(steps):
                 current_time = traci.simulation.getTime()
@@ -234,33 +233,3 @@ if __name__ == "__main__":
         print(f"Flush failed: {e}")
 
     env.close()  # closes SUMO properly
-    # Plotting section
-    try:
-        # Extracting file location
-        project_root = Path(__file__).resolve().parents[1]
-        csv_path = plots.find_latest_csv(project_root, "vehicles.csv")
-        print(f"Csv path {csv_path}\n"
-              f"Plotting data")
-        # Reading the csv file
-        df = pd.read_csv(csv_path, low_memory=False)
-        out_dir = csv_path.parent
-
-        #Printing the plots
-        plots.plot_speed_vs_route_avg_speed(df, out_dir)
-        plots.plot_accel_vs_co2(df, out_dir)
-        plots.plot_speed_vs_co2(df, out_dir)
-        plots.plot_co2_vs_jerk(df, out_dir)
-        plots.plot_stop_duration_vs_speed(df, out_dir)
-        print(f"All plots are done")
-
-        # Geographic plot
-        geo_plots.plot_min_speed_map(
-            df=df,
-            sumo_config=Path(env.sumo_config),
-            out_path=out_dir / "min_speed_map.png",
-            background_path=None,
-            top_n_labels=0
-        )
-        print(f"The plots are done")
-    except Exception as e:
-        print(f"The occurred problem: {e}")
