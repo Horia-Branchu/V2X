@@ -31,7 +31,7 @@ def plot_speed_vs_route_avg_speed(df, out_dir):
             y="speed",
             color="#3CB371",
             alpha=0.25,
-            s=10
+            s=25
         )
         sns.regplot(
             data=df,
@@ -62,8 +62,8 @@ def plot_accel_vs_co2(df, out_dir):
             data=df_filtered,
             x="accel",
             y="co2",
-            scatter_kws={'alpha': 0.4, 's': 10, 'color': '#3C096C'},
-            line_kws={'color': '#FFC880', 'linewidth': 2}
+            scatter_kws={'alpha': 0.4, 's': 10, 'color': '#1E90FF'},
+            line_kws={'color': 'gold', 'linewidth': 2}
         )
         plt.title("Acceleration vs CO2 Emission Before V2X", style='italic')
         plt.xlabel("Acceleration (m/s)")
@@ -87,8 +87,8 @@ def plot_speed_vs_co2(df, out_dir):
             data=df_non0,
             x="speed",
             y="co2",
-            scatter_kws={'alpha': 0.6, 's': 10, 'color': '#1A80BB'},
-            line_kws={'color': '#B8B8B8', 'linewidth': 2}
+            scatter_kws={'alpha': 0.6, 's': 10, 'color': 'tomato'},
+            line_kws={'color': '#006400', 'linewidth': 2}
         )
         plt.title("Speed vs CO2 Emission Before V2X", style='italic')
         plt.xlabel("Speed (m/s)")
@@ -122,7 +122,8 @@ def plot_co2_vs_jerk(df, out_dir):
             x="jerk",
             y="co2",
             scatter=False,
-            line_kws={'color': '#FFD700', 'linewidth': 2},
+            color = '#FFD700',
+            line_kws={"lw": 2},
         )
         #Just a preference in this case
         plt.legend().remove()
@@ -148,7 +149,7 @@ def compute_stop_durations(df):
             avg_st_time = tot_stop/no_stops
         else:
             #To avoid dividing it by 0
-            avg_st_time = 0.1
+            avg_st_time = 0.0
         labels.append({
             "veh_id": vid,
             "total_st_time": tot_stop,
@@ -159,9 +160,7 @@ def compute_stop_durations(df):
 def plot_stop_duration_vs_speed(df, out_dir):
     stop_df = compute_stop_durations(df)
     #Grouping mean speed per veh id
-    df_avg_speed = df.groupby("veh_id")["speed"].mean()
-    #Resetting column direction
-    df_avg_speed.reset_index(name="avg_speed")
+    df_avg_speed = df.groupby("veh_id")["speed"].mean().reset_index(name="avg_speed")
     df_st_time = pd.merge(stop_df, df_avg_speed, on="veh_id")
     df_st_time = df_st_time[(df_st_time["avg_speed"] <= 20) & (df_st_time["total_st_time"] <= 300)]
 
@@ -171,7 +170,7 @@ def plot_stop_duration_vs_speed(df, out_dir):
             data=df_st_time,
             x="avg_speed",
             y="total_st_time",
-            color="#4682B4",  # steel blue
+            color="#4682B4",
             alpha=0.5,
             s=30
         )
@@ -181,6 +180,7 @@ def plot_stop_duration_vs_speed(df, out_dir):
             y="total_st_time",
             scatter=False,
             color="#FF6347",
+            ci=90,
             line_kws={"lw": 2}
         )
         plt.xlabel("Average Speed (m/s)")
