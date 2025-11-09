@@ -10,7 +10,7 @@ logger = logging.getLogger("v2x.features")
 
 class DynamicTLS(BaseV2XFeature):
 
-    def __init__(self, feature_name="DynaimcTLS", enabled=True):
+    def __init__(self, feature_name="DynamicTLS", enabled=True):
         super().__init__(enabled)
         self.feature_name = feature_name
         self.observation_size = 3  # dummy observation size
@@ -56,7 +56,7 @@ class DynamicTLS(BaseV2XFeature):
 
         return approaching
 
-    # Returns all lanes belonging to a strret assuming consisntent naming(eg. 526477801#1_0,526477801#1_1)
+    # Returns all lanes belonging to a strret
     def get_lanes_on_same_street(self, tls_id, lane_id):
         edge_id = traci.lane.getEdgeID(lane_id)
         all_lanes = traci.trafficlight.getControlledLanes(tls_id)
@@ -96,6 +96,13 @@ class DynamicTLS(BaseV2XFeature):
         log_message = f"[{timestamp:.1f}s] {message}"
         logger.info(log_message)
 
+    # Main dynamic TLS control function:
+    # - detects vehicles approaching intersections
+    # - prioritizes energency vehicles
+    # - extends geern lights dynamically
+    # - switches light to green if only one direction has vehicles
+    # - grants green light to fewer cars that are waiting for a lot of cars to pass
+    # - restores default TLS program after manual overrides
     def dynamic_tls(self, tls_id):
 
         current_time = traci.simulation.getTime()
