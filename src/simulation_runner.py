@@ -3,14 +3,10 @@
 import os
 import logging
 import traci
-import pandas as pd
 
 from base_sumo_env import BaseSumoEnvironment
 from default_sumo_env import DefaultSumoEnviroment
 
-from data_collector import DataCollector
-from analysis import plots
-from pathlib import Path
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 
@@ -27,7 +23,6 @@ class SimulationRunner:
             sumo_env = DefaultSumoEnviroment
 
         self.env = sumo_env(config_path, **kwargs)
-        self.data_collector = DataCollector(out_dir="data")
 
     def run_until_end(self):
         """Run simulation until it naturally ends"""
@@ -40,7 +35,6 @@ class SimulationRunner:
                 traci.simulationStep()
                 current_time = traci.simulation.getTime()
                 vehicle_count = traci.vehicle.getIDCount()
-                self.data_collector.collect(current_time)
                 print(f"Time {current_time:.1f}s: Vehicles in simulation: {vehicle_count}")
 
             print("Simulation ended naturally.")
@@ -57,7 +51,6 @@ class SimulationRunner:
             traci.simulationStep()
             current_time = traci.simulation.getTime()
             vehicle_count = traci.vehicle.getIDCount()
-            self.data_collector.collect(current_time)
             print(f"Step {step}: Time {current_time:.1f}s: Vehicles in simulation: {vehicle_count}")
 
     def start_simulation(self):
@@ -68,30 +61,6 @@ class SimulationRunner:
             self.run_steps(self.env.simulation_steps)
         else:
             self.run_until_end()
-        try:
-            self.data_collector.flush()
-        except Exception as e:
-            logging.warning(f"Final flush failed: {e}")
-
-        #Plotting section
-        try:
-            #Extracting file location
-            project_root = Path(__file__).resolve().parents[1]
-            csv_path = plots.find_latest_csv(project_root, "vehicles.csv")
-            print(f"Csv path {csv_path}\n"
-                  f"Plotting data")
-            #Reading the csv file
-            df = pd.read_csv(csv_path, low_memory=False)
-            out_dir = csv_path.parent
-            plots.plot_co2_over_time(df, out_dir)
-            plots.plot_accel_vs_co2(df, out_dir)
-            plots.plot_speed_vs_co2(df, out_dir)
-            plots.plot_min_speed_per_edge(df, out_dir)
-            plots.plot_speed_over_time(df, out_dir)
-            plots.plot_co2_vs_jerk(df, out_dir)
-            print(f"The plots are done")
-        except Exception as e:
-            print(f"The occurred problem: {e}")
 
         self.env.close()
 
