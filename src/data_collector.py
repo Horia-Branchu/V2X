@@ -1,7 +1,13 @@
 import traci
 import pandas as pd
 from pathlib import Path
-
+import os
+import traci
+from default_sumo_env import DefaultSumoEnviroment
+from base_sumo_env import BaseSumoEnvironment
+import logging
+from pathlib import Path
+from analysis import plots,geo_plots
 
 class DataCollector:
     def __init__(self, out_dir="data", batch_size=50, reset_on_start=True):
@@ -37,7 +43,7 @@ class DataCollector:
                         self.start_time[vid] = t
                     # initialize stop counter for this vehicle
                     if vid not in self.stops:
-                        self.stops[vid] = 0
+                        self.stops[vid] = 0.0
                     #track if the vehicle was stopped in the previous step
                     if vid not in self.was_stopped:
                         self.was_stopped[vid] = False
@@ -125,3 +131,94 @@ class DataCollector:
 
                 df.to_csv(self.csv_path, mode="a", index=False, header=write_header)
                 self.buffer = []
+
+    def run_loop(self, steps=None):
+        traci.simulationStep()
+        #I took it from the simulation_runner
+        if steps is None:
+          try:
+
+            vehicle_count = traci.vehicle.getIDCount()
+            while traci.simulation.getMinExpectedNumber() != 0 and vehicle_count != 0:
+                current_time = traci.simulation.getTime()
+                self.collect(current_time)
+                print(f"Time {current_time:.1f}s: Vehicles in simulation: {vehicle_count}")
+                traci.simulationStep()
+                vehicle_count = traci.vehicle.getIDCount()
+            print(f"Simulation ended naturally.")
+          except traci.exceptions.FatalTraCIError as e:
+            logging.error(f"Fatal TraCI error occurred. Ending simulation: {e}")
+        else:
+          try:
+            for step in range(steps):
+                current_time = traci.simulation.getTime()
+                self.collect(current_time)
+                print(f"Step {step}: Time {current_time:.1f}s: Vehicles in simulation: {traci.vehicle.getIDCount()}")
+                traci.simulationStep()
+          except Exception as e:
+              print(f"Another exception occurred {e}")
+
+        #try except for flushing
+        try:
+           self.flush()
+        except Exception as e:
+           print(f"Flush failed {e}")
+
+
+if __name__ == "__main__":
+    # Parse command line arguments
+    args = BaseSumoEnvironment.parse_arguments()
+
+    # Path to SUMO configuration
+    script_dir = os.path.dirname(__file__)
+    sumo_config = os.path.join(script_dir, '..', 'config', 'simulation.sumocfg')
+
+    # create simulation runner
+    env = DefaultSumoEnviroment(
+        sumo_config,
+        simulation_steps=args.steps,
+        gui=args.gui,
+        bsm=args.bsm,
+        tls=args.tls,
+        priority=args.priority,
+        reroute=args.reroute
+    )
+    #Initialize DataCollector
+    collector = DataCollector(out_dir="data")
+
+    #Start simulation
+    env.reset()              # starts SUMO and connects TraCI
+    collector.run_loop(steps=env.simulation_steps)
+    env.close()      # closes SUMO properly
+
+
+    # Plotting section
+    try:
+        # Extracting file location
+        project_root = Path(__file__).resolve().parents[1]
+        csv_path = plots.find_latest_csv(project_root, "vehicles.csv")
+        print(f"Csv path {csv_path}\n"
+              f"Plotting data")
+        # Reading the csv file
+        df = pd.read_csv(csv_path, low_memory=False)
+        out_dir = csv_path.parent
+
+        #Printing the plots
+        plots.plot_speed_vs_route_avg_speed(df, out_dir)
+        plots.plot_accel_vs_co2(df, out_dir)
+        plots.plot_speed_vs_co2(df, out_dir)
+        plots.plot_co2_vs_jerk(df, out_dir)
+        plots.plot_stop_duration_vs_speed(df, out_dir)
+        print(f"All plots are done")
+
+        # Geographic plot
+        geo_plots.plot_min_speed_map(
+            df=df,
+            sumo_config=Path(env.sumo_config),
+            out_path=out_dir / "min_speed_map.png",
+            background_path=None,
+            top_n_labels=0
+        )
+        print(f"The plots are done")
+    except Exception as e:
+        print(f"The occurred problem: {e}")
