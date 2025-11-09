@@ -9,6 +9,7 @@ import itertools
 import sys
 import time
 from dummy_feature import DummyFeature
+from dynamic_tls import DynamicTLS
 
 # use a named logger for the project; features can log at DEBUG for RL and INFO for rule-based
 logger = logging.getLogger("v2x")
@@ -57,7 +58,7 @@ class BaseSumoEnvironment(gym.Env):
         if bsm:
             self.features.append(DummyFeature("BSMFeature"))
         if tls:
-            self.features.append(DummyFeature("TLSFeature"))
+            self.features.append(DynamicTLS("DynamicTLS"))
         if priority:
             self.features.append(DummyFeature("PriorityFeature"))
         if reroute:
