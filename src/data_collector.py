@@ -3,8 +3,9 @@ import pandas as pd
 from pathlib import Path
 import os
 import traci
-from default_sumo_env import DefaultSumoEnviroment
 from base_sumo_env import BaseSumoEnvironment
+import argparse
+
 import logging
 from pathlib import Path
 from analysis import plots,geo_plots
@@ -167,16 +168,54 @@ class DataCollector:
 
 if __name__ == "__main__":
     # Parse command line arguments
-    args = BaseSumoEnvironment.parse_arguments()
+    parser = argparse.ArgumentParser(description="Run SUMO DataCollector standalone")
+    parser.add_argument(
+        "--steps",
+        type=int,
+        default=None,
+        help="Number of steps to run the simulation"
+    )
+    parser.add_argument(
+        "--gui",
+        action="store_true",
+        default=False,
+        help="Run SUMO in GUI mode"
+    )
+    parser.add_argument(
+        "--bsm",
+        action="store_true",
+        help="Enable Basic Safety Message (BSM) generation during the simulation"
+    )
+    parser.add_argument(
+        "--tls",
+        action="store_true",
+        help="Enable Traffic Light System (TLS) control during the simulation"
+    )
+    parser.add_argument(
+        "--priority",
+        action="store_true",
+        help="Enable priority vehicle handling during the simulation"
+    )
+    parser.add_argument(
+        "--reroute",
+        action="store_true",
+        help="Enable dynamic rerouting of vehicles during the simulation"
+    )
+    parser.add_argument(
+        "--test-all",
+        action="store_true",
+        default=False,
+        help="Test all features with manual control"
+    )
+    args = parser.parse_args()
 
     # Path to SUMO configuration
-    script_dir = os.path.dirname(__file__)
-    sumo_config = os.path.join(script_dir, '..', 'config', 'simulation.sumocfg')
+    script_dir = os.path.abspath(os.path.dirname(__file__))
+    sumo_config = os.path.abspath(os.path.join(script_dir, "..", "config", "simulation.sumocfg"))
 
     # create simulation runner
-    env = DefaultSumoEnviroment(
+    env = BaseSumoEnvironment(
         sumo_config,
-        simulation_steps=args.steps,
         gui=args.gui,
         bsm=args.bsm,
         tls=args.tls,
@@ -187,11 +226,14 @@ if __name__ == "__main__":
     collector = DataCollector(out_dir="data")
 
     #Start simulation
-    env.reset()              # starts SUMO and connects TraCI
-    collector.run_loop(steps=env.simulation_steps)
-    env.close()      # closes SUMO properly
+    env.reset()        # starts SUMO and connects TraCI
+    collector.run_loop(steps=args.steps)
+    try:
+        collector.flush()
+    except Exception as e:
+        print(f"Flush failed: {e}")
 
-
+    env.close()  # closes SUMO properly
     # Plotting section
     try:
         # Extracting file location
