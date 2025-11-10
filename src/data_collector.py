@@ -33,14 +33,15 @@ class DataCollector:
                 if reset_on_start and self.csv_path.exists():
                     self.csv_path.unlink()
 
-    def collect(self, t: float):
+    # typevar is important to be specified in this method
+    def collect(self, time: float):
                 """Collect data from SUMO at time t"""
                 frame = []
                 for vid in traci.vehicle.getIDList():
                     co2_now = traci.vehicle.getCO2Emission(vid)
                     #first time seeing this vehicle and we store its start time
                     if vid not in self.start_time:
-                        self.start_time[vid] = t
+                        self.start_time[vid] = time
                     # initialize stop counter for this vehicle
                     if vid not in self.stops:
                         self.stops[vid] = 0.0
@@ -52,14 +53,14 @@ class DataCollector:
                     accel_now = traci.vehicle.getAcceleration(vid)
 
                     # jerk it's basically how smoothly the acceleration/brake is
-                    dt = t - self.prev_time.get(vid, t)
-                    if dt > 0:
-                         jerk_now = (accel_now - self.prev_accel.get(vid, accel_now)) / dt
+                    time_diff  = time - self.prev_time.get(vid, time)
+                    if time_diff  > 0.0:
+                         jerk_now = (accel_now - self.prev_accel.get(vid, accel_now)) / time_diff
                     else:
                          jerk_now = 0.0
 
                     self.prev_accel[vid] = accel_now
-                    self.prev_time[vid] = t
+                    self.prev_time[vid] = time
 
                     # stops counter
                     if speed_now < 0.1:
@@ -71,7 +72,7 @@ class DataCollector:
 
                     self.was_stopped[vid] = stopped_now
 
-                    trip_time_now = t - self.start_time[vid]
+                    trip_time_now = time - self.start_time[vid]
                     distance_now = traci.vehicle.getDistance(vid)
 
                     # average speed per route_id
@@ -95,7 +96,7 @@ class DataCollector:
                         self.cumulative_co2[vid] = co2_now
 
                     frame.append({
-                        "time": t,
+                        "time": time,
                         "veh_id": vid,
                         "edge": traci.vehicle.getRoadID(vid),
                         "lane": traci.vehicle.getLaneID(vid),
