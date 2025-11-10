@@ -4,6 +4,7 @@ import os
 import argparse
 import logging
 import traci
+
 from base_sumo_env import BaseSumoEnvironment
 
 # use the project logger
@@ -178,7 +179,7 @@ def main():
     args = SimulationRunner.parse_arguments()
 
     script_dir = os.path.dirname(__file__)
-    sumo_config = os.path.join(script_dir, '..', 'config', 'simulation.sumocfg')
+    sumo_config = os.path.join(script_dir, '..', 'config', 'simulation  .sumocfg')
 
     env = BaseSumoEnvironment(
         sumo_config,
