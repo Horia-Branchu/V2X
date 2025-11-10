@@ -211,3 +211,7 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+config/edgeData.xml
+config/stats.xml
+config/tripinfos.xml
+config/false
