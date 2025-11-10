@@ -150,7 +150,7 @@ ENV/
 env.bak/
 venv.bak/
 
-.idea/
+
 src/data/
 # Spyder project settings
 .spyderproject
