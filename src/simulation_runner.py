@@ -6,8 +6,12 @@ import logging
 import traci
 from base_sumo_env import BaseSumoEnvironment
 
-# Set up logging
-logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
+# use the project logger
+logger = logging.getLogger("v2x")
+if not logger.handlers:
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter('%(levelname)s: %(message)s'))
+    logger.addHandler(handler)
 
 class SimulationRunner:
     def __init__(self, config_path, sumo_env, steps, **kwargs):
@@ -27,8 +31,8 @@ class SimulationRunner:
             self.env = env_class(config_path, **kwargs)
 
     def run_manual_feature_test(self):
-        print("------ Feature testing mode ------")
-        print(f"active features: {[f.get_feature_name() for f in self.env.features]}")
+        logger.info("------ Feature testing mode ------")
+        logger.info(f"active features: {[f.get_feature_name() for f in self.env.features]}")
 
         obs, _ = self.env.reset()
 
@@ -40,7 +44,7 @@ class SimulationRunner:
 
             if terminated or truncated:
                 obs, _ = self.env.reset()
-                print(f"------ simulation reseted at step {current_step} ------")
+                logger.info(f"------ simulation reseted at step {current_step} ------")
 
         if self.simulation_steps is not None:
             for current_step in range(self.simulation_steps):
@@ -55,8 +59,7 @@ class SimulationRunner:
 
     def test_specific_feature(self, feature_name):
         """Test a specific feature in isolation"""
-        print(f"------ Isolated feature testing: {feature_name} ------")
-
+        logger.info(f"------ Isolated feature testing: {feature_name} ------")
         obs, _ = self.env.reset()
 
         def simulation_logic(current_step):
@@ -65,7 +68,8 @@ class SimulationRunner:
 
             obs, reward, terminated, truncated, info = self.env.step(action)
 
-            print(f"Step {current_step}: {feature_name}")
+            # per-step feature test message — verbose (use DEBUG so rule-based runs don't get spammed)
+            logger.debug(f"Step {current_step}: {feature_name}")
 
             if terminated or truncated:
                 return -1
@@ -98,12 +102,13 @@ class SimulationRunner:
                 traci.simulationStep()
                 current_time = traci.simulation.getTime()
                 vehicle_count = traci.vehicle.getIDCount()
-                print(f"Time {current_time:.1f}s: Vehicles in simulation: {vehicle_count}")
+                # keep the original concise rule-based log line
+                logger.info(f"Time {current_time:.1f}s: Vehicles in simulation: {vehicle_count}")
 
-            print("Simulation ended naturally.")
+            logger.info("Simulation ended naturally.")
 
         except traci.exceptions.FatalTraCIError as e:
-            logging.error(f"Fatal TraCI error occurred. Ending simulation: {e}")
+            logger.error(f"Fatal TraCI error occurred. Ending simulation: {e}")
 
     def run_with_steps(self):
         """Run simulation for a specified number of steps"""
@@ -112,7 +117,7 @@ class SimulationRunner:
             traci.simulationStep()
             current_time = traci.simulation.getTime()
             vehicle_count = traci.vehicle.getIDCount()
-            print(f"Step {step}: Time {current_time:.1f}s: Vehicles in simulation: {vehicle_count}")
+            logger.info(f"Step {step}: Time {current_time:.1f}s: Vehicles in simulation: {vehicle_count}")
 
     def start_simulation(self):
         """Start the SUMO simulation with TraCI"""
@@ -198,7 +203,7 @@ def main():
     elif len(enabled_features) == 1:
         runner.test_specific_feature(enabled_features[0])
     elif len(enabled_features) > 1:
-        print(f"Multiple features enabled: {enabled_features}, using manual test mode")
+        logger.info(f"Multiple features enabled: {enabled_features}, using manual test mode")
         runner.run_manual_feature_test()
     else:
         runner.start_simulation()
