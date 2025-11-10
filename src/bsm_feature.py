@@ -51,12 +51,9 @@ class BSMFeature(BaseV2XFeature):
     def get_feature_name(self) -> str:
         return self.feature_name
 
-    def take_action(self, action):
-        return
 
     # O(n) as you requested in our call, utilizes get leader function from TRACI api, if there is no leader ahead of a car then it skips the checks for it
-
-    def feature_step(self):
+    def take_action(self, action):
         if not self.enable:
             return
 
@@ -80,15 +77,19 @@ class BSMFeature(BaseV2XFeature):
             ttc = (gap / rel_speed) if rel_speed > 1e-3 else float("inf")
 
             should_brake = (
-                gap < self.min_gap
-                or (gap <= self.max_ttc_gap and ttc < self.ttc_thresh)
-                or (gap <= self.max_decel_gap and a_lead <= self.leader_decel_thresh)
+                    gap < self.min_gap
+                    or (gap <= self.max_ttc_gap and ttc < self.ttc_thresh)
+                    or (gap <= self.max_decel_gap and a_lead <= self.leader_decel_thresh)
             )
 
             last = self._last_brake_step.get(vid, -10.0)
             if should_brake and (sim_t - last) >= 0.5:
                 self._trigger_emergency_brake(vid, gap, ttc, lead_id, sim_t)
                 self._last_brake_step[vid] = sim_t
+
+
+
+
 
     def feature_reset(self):
         self._last_brake_step.clear()
