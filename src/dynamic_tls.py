@@ -86,10 +86,7 @@ class DynamicTLS(BaseV2XFeature):
                 if tls_state[i].lower() != 'g':
                     return False
         return True
-        
-    def is_emergency_vehicle(self, v_id):
-        return traci.vehicletype.getVehicleClass(traci.vehicle.getTypeID(v_id)) == "emergency"
-
+    
     # Prints SPaT (Signal Phase and Timing) messages to console
     def spat_message_log(self,message):
         timestamp = traci.simulation.getTime()
@@ -98,7 +95,6 @@ class DynamicTLS(BaseV2XFeature):
 
     # Main dynamic TLS control function:
     # - detects vehicles approaching intersections
-    # - prioritizes energency vehicles
     # - extends geern lights dynamically
     # - switches light to green if only one direction has vehicles
     # - grants green light to fewer cars that are waiting for a lot of cars to pass
@@ -123,54 +119,44 @@ class DynamicTLS(BaseV2XFeature):
 
             distance_to_tls = traci.lane.getLength(lane_id) - traci.vehicle.getLanePosition(v_id)
 
-            if distance_to_tls < self.detection_range * 2:
-                # Case 1: Emergency vehicle
-                if self.is_emergency_vehicle(v_id):
-                    self.set_tls_green_for_vehicle(tls_id, v_id)
-                    traci.trafficlight.setPhaseDuration(tls_id, self.extend_time * 2)
-                    self.tls_override_times[tls_id] = current_time
-                    self.spat_message_log(f"\033[91mEmergency vehicle {v_id} detected near {tls_id}, forcing GREEN\033[0m")
+            if distance_to_tls < self.detection_range:
+
+                remaining = traci.trafficlight.getNextSwitch(tls_id) - traci.simulation.getTime()
+            
+                # Case 1: Extend already green light
+                if self.is_lane_green(tls_id, lane_id) and remaining < self.extend_time:
+                    traci.trafficlight.setPhaseDuration(tls_id, self.extend_time)
+                    self.spat_message_log(f"Vehicle {v_id} approaching {tls_id}, extending GREEN for {self.extend_time}s.")
                     return
-
-                # Case 2: Normal vehicles
-                if distance_to_tls < self.detection_range:
-
-                    remaining = traci.trafficlight.getNextSwitch(tls_id) - traci.simulation.getTime()
                 
-                    # Case 2.1: Extend already green light
-                    if self.is_lane_green(tls_id, lane_id) and remaining < self.extend_time:
+                # Case 2: Turn green if only one lane is approaching
+                approaching = self.get_approaching_vehicles_by_lane(tls_id, self.detection_range)
+
+                if len(approaching) == 1 and lane_id in approaching:
+                    if not self.is_lane_green(tls_id, lane_id):
+                        self.set_tls_green_for_vehicle(tls_id, v_id)
                         traci.trafficlight.setPhaseDuration(tls_id, self.extend_time)
-                        self.spat_message_log(f"Vehicle {v_id} approaching {tls_id}, extending GREEN for {self.extend_time}s.")
-                        return
-                    
-                    # Case 2.2: Turn green if only one lane is approaching
-                    approaching = self.get_approaching_vehicles_by_lane(tls_id, self.detection_range)
+                        self.tls_override_times[tls_id] = current_time
+                        self.spat_message_log(f"Only vehicles on lane {lane_id} near {tls_id}, switching to GREEN")
+                    return
+                
+                # Case 3: Turn light green if there is only one vehicle waiting for a lot of vehicles to pass
+                edge_counts = {edge: len(v_list) for edge, v_list in approaching.items()}
 
-                    if len(approaching) == 1 and lane_id in approaching:
-                        if not self.is_lane_green(tls_id, lane_id):
-                            self.set_tls_green_for_vehicle(tls_id, v_id)
+                if edge_counts:
+                    max_edge = max(edge_counts, key = edge_counts.get)
+                    min_edge = min(edge_counts, key = edge_counts.get)
+
+                    max_count = edge_counts[max_edge]
+                    min_count = edge_counts[min_edge]
+
+                    if (min_count > 0 and min_count <= 3) and max_count - min_count > 5:
+                        v_id = approaching[min_edge][0]
+                        if not self.is_lane_green(tls_id,lane_id):
+                            self.set_tls_green_for_vehicle(tls_id,v_id)
                             traci.trafficlight.setPhaseDuration(tls_id, self.extend_time)
-                            self.tls_override_times[tls_id] = current_time
-                            self.spat_message_log(f"Only vehicles on lane {lane_id} near {tls_id}, switching to GREEN")
-                        return
-                    
-                    # Case 2.3: Turn light green if there is only one vehicle waiting for a lot of vehicles to pass
-                    edge_counts = {edge: len(v_list) for edge, v_list in approaching.items()}
-
-                    if edge_counts:
-                        max_edge = max(edge_counts, key = edge_counts.get)
-                        min_edge = min(edge_counts, key = edge_counts.get)
-
-                        max_count = edge_counts[max_edge]
-                        min_count = edge_counts[min_edge]
-
-                        if (min_count > 0 and min_count <= 3) and max_count - min_count > 5:
-                            v_id = approaching[min_edge][0]
-                            if not self.is_lane_green(tls_id,lane_id):
-                                self.set_tls_green_for_vehicle(tls_id,v_id)
-                                traci.trafficlight.setPhaseDuration(tls_id, self.extend_time)
-                                self.tls_override_times[tls_id] = traci.simulation.getTime()
-                                self.spat_message_log(f"\033[93mImbalance detected at {tls_id}, granting short green for lane {min_edge}\033[0m")
+                            self.tls_override_times[tls_id] = traci.simulation.getTime()
+                            self.spat_message_log(f"Imbalance detected at {tls_id}, granting short green for lane {min_edge}\033[0m")
         return
     
     def take_action(self, action):
