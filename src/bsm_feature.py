@@ -35,7 +35,7 @@ class BSMFeature(BaseV2XFeature):
         self.action_size = 1
         self._last_brake_step = {}
 
-    # ---- required interface ----
+
     def get_observation_space(self) -> gym.Space:
         return gym.spaces.Box(low=0.0, high=1.0, shape=(self.observation_size,))
 
@@ -54,7 +54,8 @@ class BSMFeature(BaseV2XFeature):
     def take_action(self, action):
         return
 
-    # ---- main loop ----
+    # O(n) as you requested in our call, utilizes get leader function from TRACI api, if there is no leader ahead of a car then it skips the checks for it
+
     def feature_step(self):
         if not self.enable:
             return
@@ -92,9 +93,9 @@ class BSMFeature(BaseV2XFeature):
     def feature_reset(self):
         self._last_brake_step.clear()
 
-    # ---- helpers ----
+    # the distance growing is there for when theh gap between cars is rather small but currently growing so there's no risk of collision
     def _trigger_emergency_brake(self, veh_id: str, gap: float, ttc: float, leader_id: str, sim_t: float):
-        ttc_str = f"{ttc:.2f}s" if np.isfinite(ttc) else "distance shortened"
+        ttc_str = f"{ttc:.2f}s" if np.isfinite(ttc) else "distance growing"
         logger.info(
             f"[{self.feature_name}] BSM: {veh_id} EMERGENCY_BRAKE "
             f"(leader={leader_id}, gap={gap:.1f}m, ttc={ttc_str}) @ {sim_t:.1f}s"
