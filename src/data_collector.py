@@ -1,13 +1,14 @@
-import traci
+# data_collector.py  — self-activating collector (no runner changes needed)
 import pandas as pd
-from pathlib import Path
 import os
 import traci
-from base_sumo_env import BaseSumoEnvironment
+from pathlib import Path
 import argparse
 
+from simulation_runner import SimulationRunner
+from base_sumo_env import BaseSumoEnvironment
 import logging
-from pathlib import Path
+logger = logging.getLogger("v2x")
 
 class DataCollector:
     def __init__(self, out_dir="data", batch_size=1000, reset_on_start=True):
@@ -95,7 +96,6 @@ class DataCollector:
                     else:
                         self.cumulative_co2[vid] = co2_now
 
-
                     frame.append({
                         "time": time,
                         "veh_id": vid,
@@ -134,104 +134,111 @@ class DataCollector:
                 df.to_csv(self.csv_path, mode="a", index=False, header=write_header)
                 self.buffer = []
 
-    def run_loop(self, steps=None):
+# Sa dam run la simulation runner direct aici de 2 ori odata ca baseline si odata cu parametri direct aici!!!
+
+class RunnerWithCollector(SimulationRunner):
+    def __init__(self, *args, collector, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.collector = collector
+
+    def run_until_end(self):
         traci.simulationStep()
-        #run the simulation normally
-        if steps is None:
-          try:
-            vehicle_count = traci.vehicle.getIDCount()
-            while traci.simulation.getMinExpectedNumber() != 0 and vehicle_count != 0:
-                current_time = traci.simulation.getTime()
-                self.collect(current_time)
-                print(f"Time {current_time:.1f}s: Vehicles in simulation: {vehicle_count}")
-                traci.simulationStep()
-                vehicle_count = traci.vehicle.getIDCount()
-            print(f"Simulation ended naturally.")
-          except traci.exceptions.FatalTraCIError as e:
-            logging.error(f"Fatal TraCI error occurred. Ending simulation: {e}")
-        else:
-        #run for a fixed number of simulation steps
-          try:
-            for step in range(steps):
-                current_time = traci.simulation.getTime()
-                self.collect(current_time)
-                print(f"Step {step}: Time {current_time:.1f}s: Vehicles in simulation: {traci.vehicle.getIDCount()}")
-                traci.simulationStep()
-          except Exception as e:
-              print(f"Another exception occurred {e}")
+        current_time = traci.simulation.getTime()
+        vehicle_count = traci.vehicle.getIDCount()
+        logger.info(f"Time {current_time:.1f}s: Vehicles in simulation: {vehicle_count}")
+        self.collector.collect(current_time)
 
-        #try except for flushing
         try:
-           self.flush()
-        except Exception as e:
-           print(f"Flush failed {e}")
+            while traci.simulation.getMinExpectedNumber() != 0 and vehicle_count != 0:
+                traci.simulationStep()
+                current_time = traci.simulation.getTime()
+                vehicle_count = traci.vehicle.getIDCount()
+                logger.info(f"Time {current_time:.1f}s: Vehicles in simulation: {vehicle_count}")
+                self.collector.collect(current_time)
 
+            logger.info("Simulation ended naturally.")
 
-if __name__ == "__main__":
-    # Parse command line arguments
-    parser = argparse.ArgumentParser(description="Run SUMO DataCollector standalone")
-    parser.add_argument(
-        "--steps",
-        type=int,
-        default=None,
-        help="Number of steps to run the simulation"
-    )
-    parser.add_argument(
-        "--gui",
-        action="store_true",
-        default=False,
-        help="Run SUMO in GUI mode"
-    )
-    parser.add_argument(
-        "--bsm",
-        action="store_true",
-        help="Enable Basic Safety Message (BSM) generation during the simulation"
-    )
-    parser.add_argument(
-        "--tls",
-        action="store_true",
-        help="Enable Traffic Light System (TLS) control during the simulation"
-    )
-    parser.add_argument(
-        "--priority",
-        action="store_true",
-        help="Enable priority vehicle handling during the simulation"
-    )
-    parser.add_argument(
-        "--reroute",
-        action="store_true",
-        help="Enable dynamic rerouting of vehicles during the simulation"
-    )
-    parser.add_argument(
-        "--test-all",
-        action="store_true",
-        default=False,
-        help="Test all features with manual control"
-    )
-    args = parser.parse_args()
+        except traci.exceptions.FatalTraCIError as e:
+            logger.error(f"Fatal TraCI error occurred. Ending simulation: {e}")
 
-    # Path to SUMO configuration
-    script_dir = os.path.abspath(os.path.dirname(__file__))
-    sumo_config = os.path.abspath(os.path.join(script_dir, "..", "config", "simulation.sumocfg"))
+    def run_with_steps(self):
+        for step in range(self.simulation_steps):
+            traci.simulationStep()
+            current_time = traci.simulation.getTime()
+            vehicle_count = traci.vehicle.getIDCount()
+            logger.info(f"Step {step}: Time {current_time:.1f}s: Vehicles in simulation: {vehicle_count}")
+            self.collector.collect(current_time)
+        self.collector.flush()
 
-    # create simulation runner
-    env = BaseSumoEnvironment(
-        sumo_config,
+def parse_arguments():
+    args = SimulationRunner.parse_arguments()
+
+    extra = argparse.ArgumentParser(add_help=False)
+    extra.add_argument("--config", type=str, default=None, help="Path to .sumocfg")
+    extra.add_argument("--out-dir", type=str, default="data", help="Output directory for CSVs")
+    extras, _ = extra.parse_known_args()
+
+    args.config = extras.config
+    args.out_dir = extras.out_dir
+    return args
+
+def resolve_config(user_cfg: str | None) -> str:
+    if user_cfg:
+        p = Path(user_cfg).expanduser().resolve()
+        if not p.exists():
+            raise FileNotFoundError(f"SUMO config not found: {p}")
+        return str(p)
+
+    here = Path(__file__).resolve().parent
+    cand = here.parent / "config" / "simulation.sumocfg"
+    if cand.exists():
+        return str(cand)
+
+    raise FileNotFoundError("No .sumocfg found. Pass --config or place simulation.sumocfg under ..\\config\\")
+
+def build_env(config_path: str, *, gui: bool, bsm: bool, tls: bool, priority: bool, reroute: bool):
+    """Create the same BaseSumoEnvironment"""
+    return BaseSumoEnvironment(
+        config_path,
+        gui=gui,
+        bsm=bsm,
+        tls=tls,
+        priority=priority,
+        reroute=reroute
+    )
+def run_once(config_path: str, steps: int | None, gui: bool,
+             bsm: bool, tls: bool, priority: bool, reroute: bool,
+             collector: DataCollector):
+    env = build_env(config_path, gui=gui, bsm=bsm, tls=tls, priority=priority, reroute=reroute)
+    runner = RunnerWithCollector(config_path, sumo_env=env, steps=steps, collector=collector)
+    runner.start_simulation()
+
+def main():
+    args = parse_arguments()
+    cfg = resolve_config(args.config)
+    out_dir = args.out_dir
+
+    baseline_collector = DataCollector(out_dir=out_dir, batch_size=1000, reset_on_start=True)
+    run_once(
+        config_path=cfg,
+        steps=args.steps,
         gui=args.gui,
-        bsm=args.bsm,
-        tls=args.tls,
-        priority=args.priority,
-        reroute=args.reroute
+        bsm=False, tls=False, priority=False, reroute=False,
+        collector=baseline_collector
     )
-    #Initialize DataCollector
-    collector = DataCollector(out_dir="data")
+    from pathlib import Path
+    csv_path = Path(out_dir) / "vehicles.csv"
+    baseline_path = Path(out_dir) / "vehicles_baseline.csv"
+    if csv_path.exists():
+        csv_path.rename(baseline_path)
 
-    #Start simulation
-    env.reset()        # starts SUMO and connects TraCI
-    collector.run_loop(steps=args.steps)
-    try:
-        collector.flush()
-    except Exception as e:
-        print(f"Flush failed: {e}")
-
-    env.close()  # closes SUMO properly
+    params_collector = DataCollector(out_dir=out_dir, batch_size=1000, reset_on_start=True)
+    run_once(
+        config_path=cfg,
+        steps=args.steps,
+        gui=args.gui,
+        bsm=args.bsm, tls=args.tls, priority=args.priority, reroute=args.reroute,
+        collector=params_collector
+    )
+if __name__ == "__main__":
+    main()
