@@ -95,6 +95,7 @@ class DataCollector:
                     else:
                         self.cumulative_co2[vid] = co2_now
 
+
                     frame.append({
                         "time": time,
                         "veh_id": vid,
