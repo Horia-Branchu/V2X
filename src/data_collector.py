@@ -1,4 +1,4 @@
-# data_collector.py  — self-activating collector (no runner changes needed)
+
 import pandas as pd
 import os
 import traci
@@ -133,8 +133,6 @@ class DataCollector:
 
                 df.to_csv(self.csv_path, mode="a", index=False, header=write_header)
                 self.buffer = []
-
-# Sa dam run la simulation runner direct aici de 2 ori odata ca baseline si odata cu parametri direct aici!!!
 
 class RunnerWithCollector(SimulationRunner):
     def __init__(self, *args, collector, **kwargs):
