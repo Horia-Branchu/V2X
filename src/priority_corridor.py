@@ -1,17 +1,17 @@
 from __future__ import annotations
 from typing import Iterable
+import numpy as np
+import gymnasium as gym
 import traci
 
-try:
-    from simulation_runner import SimulationRunner
-except Exception as _e:
-    raise RuntimeError("priority_corridor.py expects simulation_runner.py in PYTHONPATH") from _e
+from base_v2x_feature import BaseV2XFeature
 
 PRIORITY_PREFIXES: tuple[str, ...] = ("amb", "fire", "pol")
 TRIGGER_DISTANCE: float = 35.0          # meters
 SLOWDOWN_FACTOR: float = 0.35           # 35% of current speed while yielding
 YIELD_DURATION_STEPS: int = 3           # seconds to keep lane change order
 
+# Safety limits
 MIN_SPEED_AFTER_SLOWDOWN: float = 0.0   # allow full stop
 MAX_BULK_COMMANDS_PER_STEP: int = 500   # avoid sending too many TraCI cmds
 
@@ -27,20 +27,38 @@ def _euclid2(p1, p2) -> float:
     return dx * dx + dy * dy
 
 
-try:
-    from simulation_runner import RunnerWithCollector as _BaseRunner
-except Exception:
-    _BaseRunner = SimulationRunner
+class PriorityCorridorFeature(BaseV2XFeature):
+    def __init__(self, enabled: bool = True):
+        super().__init__(enabled=enabled)
+        self._priority_speed_mode = 0  # 0 = allow direct speed control
+        self._priority_lc_mode = 0     # 0 = allow direct lane control
 
+        # Rule-based: empty spaces
+        self._obs_space = gym.spaces.Box(low=0.0, high=0.0, shape=(0,), dtype=np.float32)
+        self._act_space = gym.spaces.Discrete(1)
 
-class PriorityCorridorRunner(_BaseRunner):
+    def get_observation_space(self) -> gym.Space:
+        return self._obs_space
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._priority_speed_mode = 0
-        self._priority_lc_mode = 0
+    def get_action_space(self) -> gym.Space:
+        return self._act_space
 
-    def _enforce_priority_corridors(self):
+    def take_action(self, action) -> None:
+        pass
+
+    def get_observation(self) -> np.ndarray:
+        return np.zeros((0,), dtype=np.float32)
+
+    def calculate_reward(self) -> float:
+        return 0.0
+
+    def feature_reset(self):
+        pass
+
+    def feature_step(self):
+        if not self.enable:
+            return
+
         veh_ids: Iterable[str] = traci.vehicle.getIDList()
         priors = [vid for vid in veh_ids if _is_priority(vid)]
         if not priors:
@@ -56,7 +74,7 @@ class PriorityCorridorRunner(_BaseRunner):
             except traci.TraCIException:
                 continue
 
-        # Rightmost - index 0 in sumo
+        # Rightmost - index 0 in SUMO
         cmds_sent = 0
         for p in priors:
             if p not in pos or p not in edge:
@@ -97,46 +115,3 @@ class PriorityCorridorRunner(_BaseRunner):
                         return
                 except traci.TraCIException:
                     continue
-
-    def run_until_end(self):
-
-        traci.simulationStep()
-        if hasattr(self, "collector"):
-            try:
-                current_time = traci.simulation.getTime()
-                self.collector.collect(current_time)
-            except Exception:
-                pass
-        self._enforce_priority_corridors()
-
-        try:
-            while traci.simulation.getMinExpectedNumber() != 0:
-                traci.simulationStep()
-                if hasattr(self, "collector"):
-                    try:
-                        current_time = traci.simulation.getTime()
-                        self.collector.collect(current_time)
-                    except Exception:
-                        pass
-                self._enforce_priority_corridors()
-        except traci.exceptions.FatalTraCIError as e:
-            try:
-                import logging
-                logging.getLogger(__name__).error("Fatal TraCI error in PriorityCorridorRunner: %s", e)
-            except Exception:
-                pass
-
-    def run_with_steps(self):
-        steps = getattr(self, "simulation_steps", None)
-        if not isinstance(steps, int) or steps <= 0:
-            return self.run_until_end()
-
-        for _ in range(steps):
-            traci.simulationStep()
-            if hasattr(self, "collector"):
-                try:
-                    current_time = traci.simulation.getTime()
-                    self.collector.collect(current_time)
-                except Exception:
-                    pass
-            self._enforce_priority_corridors()
