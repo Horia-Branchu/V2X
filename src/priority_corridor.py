@@ -43,8 +43,6 @@ class PriorityCorridorFeature(BaseV2XFeature):
     def get_action_space(self) -> gym.Space:
         return self._act_space
 
-    def take_action(self, action) -> None:
-        pass
 
     def get_observation(self) -> np.ndarray:
         return np.zeros((0,), dtype=np.float32)
@@ -55,7 +53,7 @@ class PriorityCorridorFeature(BaseV2XFeature):
     def feature_reset(self):
         pass
 
-    def feature_step(self):
+    def take_action(self, action) -> None:
         if not self.enable:
             return
 
@@ -65,8 +63,7 @@ class PriorityCorridorFeature(BaseV2XFeature):
             return
 
         # Cache positions and edges to avoid repeated calls
-        pos = {}
-        edge = {}
+        pos, edge = {}, {}
         for vid in veh_ids:
             try:
                 pos[vid] = traci.vehicle.getPosition(vid)
@@ -110,8 +107,12 @@ class PriorityCorridorFeature(BaseV2XFeature):
                     new_speed = max(MIN_SPEED_AFTER_SLOWDOWN, cur * SLOWDOWN_FACTOR)
                     traci.vehicle.setSpeedMode(v, 0)
                     traci.vehicle.setSpeed(v, new_speed)
+
                     cmds_sent += 1
                     if cmds_sent >= MAX_BULK_COMMANDS_PER_STEP:
                         return
                 except traci.TraCIException:
                     continue
+
+    def feature_step(self):
+        self.take_action(action=None)
