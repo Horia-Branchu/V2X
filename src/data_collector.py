@@ -18,8 +18,7 @@ class DataCollector:
                 # making the directory in a file named Data
                 self.out_dir.mkdir(parents=True, exist_ok=True)
                 self.csv_path = self.out_dir / "vehicles.csv"
-
-                #Dict for feature engineering
+                # dict for feature engineering
                 self.cumulative_co2 = {}
                 self.prev_accel = {}
                 self.prev_time = {}
@@ -126,10 +125,7 @@ class DataCollector:
                     return None
 
                 df = pd.DataFrame(self.buffer)
-                if self.csv_path.exists():
-                    write_header = False
-                else:
-                    write_header = True
+                write_header = not self.csv_path.exists()
 
                 df.to_csv(self.csv_path, mode="a", index=False, header=write_header)
                 self.buffer = []
@@ -140,7 +136,7 @@ class RunnerWithCollector(SimulationRunner):
         self.collector = collector
 
     def run_until_end(self):
-        traci.simulationStep()
+        self.env.step(0)
         current_time = traci.simulation.getTime()
         vehicle_count = traci.vehicle.getIDCount()
         logger.info(f"Time {current_time:.1f}s: Vehicles in simulation: {vehicle_count}")
@@ -148,7 +144,7 @@ class RunnerWithCollector(SimulationRunner):
 
         try:
             while traci.simulation.getMinExpectedNumber() != 0 and vehicle_count != 0:
-                traci.simulationStep()
+                self.env.step(0)
                 current_time = traci.simulation.getTime()
                 vehicle_count = traci.vehicle.getIDCount()
                 logger.info(f"Time {current_time:.1f}s: Vehicles in simulation: {vehicle_count}")
