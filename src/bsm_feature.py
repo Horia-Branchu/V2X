@@ -8,6 +8,9 @@ logger = logging.getLogger("v2x.features")
 
 #improved variable names to make their purpose more obvious and make the application be overall more readable from a 3rd person's pov
 class BSMFeature(BaseV2XFeature):
+    DEFAULT_LAST_BRAKE_TIME = -10.0
+    MIN_BRAKE_INTERVAL_S = 0.5
+    PREEMPTIVE_SLOWDOWN_FACTOR = 0.7
     def __init__(
         self,
         feature_name: str = "BSMFeature",
@@ -104,8 +107,8 @@ class BSMFeature(BaseV2XFeature):
                     f"LEADER_DECEL<={self.leader_decel_threshold_mps2:.1f}m/s²"
                 )
 
-            last_brake_time = self._last_brake_step.get(vehicle_id, -10.0)
-            if should_brake and (current_time_s - last_brake_time) >= 0.5:
+            last_brake_time = self._last_brake_step.get(vehicle_id, self.DEFAULT_LAST_BRAKE_TIME)
+            if should_brake and (current_time_s - last_brake_time) >= self.MIN_BRAKE_INTERVAL_S:
 
                 time_to_collision_display = (
                     f"{time_to_collision_s:.2f}s"
@@ -124,7 +127,7 @@ class BSMFeature(BaseV2XFeature):
                     except traci.TraCIException as e:
                         logger.warning(f"[{self.feature_name}] brake failed for {vehicle_id}: {e}")
                 else:
-                    target_speed_mps = max(0.0, follower_speed_mps * 0.7)  # gentle pre-emptive slowdown
+                    target_speed_mps = max(0.0, follower_speed_mps * self.PREEMPTIVE_SLOWDOWN_FACTOR)
                     logger.info(
                         f"[{self.feature_name}] PREEMPTIVE_SLOWDOWN: {vehicle_id} following {leader_id} "
                         f"(gap={distance_to_leader_m:.1f}m, time_to_collision={time_to_collision_display}, "
