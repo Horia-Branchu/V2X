@@ -190,7 +190,8 @@ def main():
         reroute=args.reroute
     )
 
-    runner = SimulationRunner(sumo_config, steps=args.steps, sumo_env=env)
+    from priority_corridor import PriorityCorridorRunner
+    runner = PriorityCorridorRunner(sumo_config, steps=args.steps, sumo_env=env)
 
     enabled_features = []
     if args.bsm: enabled_features.append("bsm")
