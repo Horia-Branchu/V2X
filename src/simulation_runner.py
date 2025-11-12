@@ -75,11 +75,8 @@ def main():
     script_dir = os.path.dirname(__file__)
     sumo_config = os.path.join(script_dir, '..', 'config', 'simulation.sumocfg')
 
-    from priority_corridor import PriorityCorridorRunner
-    RunnerClass = PriorityCorridorRunner
-
     # create simulation runner
-    runner = RunnerClass(
+    runner = SimulationRunner(
         sumo_env=None,
         config_path=sumo_config,
         simulation_steps=args.steps,
