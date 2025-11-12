@@ -172,29 +172,22 @@ def parse_arguments():
     args = SimulationRunner.parse_arguments()
 
     extra = argparse.ArgumentParser(add_help=False)
-    extra.add_argument("--config", type=str, default=None, help="Path to .sumocfg")
     extra.add_argument("--out-dir", type=str, default="data", help="Output directory for CSVs")
     extras, _ = extra.parse_known_args()
 
-    args.config = extras.config
     args.out_dir = extras.out_dir
     return args
 
-def resolve_config(user_cfg: str | None) -> str:
-    if user_cfg:
-        p = Path(user_cfg).expanduser().resolve()
-        if not p.exists():
-            raise FileNotFoundError(f"SUMO config not found: {p}")
-        return str(p)
-
+def resolve_config():
+    """Using the normal config if it exists at the normal path"""
     here = Path(__file__).resolve().parent
-    cand = here.parent / "config" / "simulation.sumocfg"
-    if cand.exists():
-        return str(cand)
+    parent_path = here.parent / "config" / "simulation.sumocfg"
+    if parent_path.exists():
+        return str(parent_path)
 
     raise FileNotFoundError("No .sumocfg found. Pass --config or place simulation.sumocfg under ..\\config\\")
 
-def build_env(config_path: str, *, gui: bool, bsm: bool, tls: bool, priority: bool, reroute: bool):
+def build_env(config_path, *, gui, bsm, tls, priority, reroute):
     """Create the same BaseSumoEnvironment"""
     return BaseSumoEnvironment(
         config_path,
@@ -204,6 +197,8 @@ def build_env(config_path: str, *, gui: bool, bsm: bool, tls: bool, priority: bo
         priority=priority,
         reroute=reroute
     )
+
+# typevar is important to be specified in this method
 def run_once(config_path: str, steps: int | None, gui: bool,
              bsm: bool, tls: bool, priority: bool, reroute: bool,
              collector: DataCollector):
@@ -213,7 +208,7 @@ def run_once(config_path: str, steps: int | None, gui: bool,
 
 def main():
     args = parse_arguments()
-    cfg = resolve_config(args.config)
+    cfg = resolve_config()
     out_dir = args.out_dir
 
     baseline_collector = DataCollector(out_dir=out_dir, batch_size=1000, reset_on_start=True)
@@ -224,7 +219,7 @@ def main():
         bsm=False, tls=False, priority=False, reroute=False,
         collector=baseline_collector
     )
-    from pathlib import Path
+
     csv_path = Path(out_dir) / "vehicles.csv"
     baseline_path = Path(out_dir) / "vehicles_baseline.csv"
     if csv_path.exists():
