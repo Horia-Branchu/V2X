@@ -7,6 +7,7 @@ import traci
 from base_sumo_env import BaseSumoEnvironment
 from default_sumo_env import DefaultSumoEnviroment
 
+
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 
@@ -74,8 +75,11 @@ def main():
     script_dir = os.path.dirname(__file__)
     sumo_config = os.path.join(script_dir, '..', 'config', 'simulation.sumocfg')
 
+    from priority_corridor import PriorityCorridorRunner
+    RunnerClass = PriorityCorridorRunner
+
     # create simulation runner
-    runner = SimulationRunner(
+    runner = RunnerClass(
         sumo_env=None,
         config_path=sumo_config,
         simulation_steps=args.steps,
