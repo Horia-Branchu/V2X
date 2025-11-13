@@ -59,11 +59,12 @@ class DataCollector:
                     self.prev_time[vid] = time
 
                     # stops counter
-                    stopped_now = speed_now < 0.1
-                    if stopped_now and not self.was_stopped[vid]:
+                    is_stopped_now = speed_now < 0.1
+
+                    if is_stopped_now and not self.was_stopped[vid]:
                         self.stops[vid] += 1
 
-                    self.was_stopped[vid] = stopped_now
+                    self.was_stopped[vid] = is_stopped_now
 
                     trip_time_now = time - self.start_time[vid]
                     distance_now = traci.vehicle.getDistance(vid)
