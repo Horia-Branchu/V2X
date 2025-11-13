@@ -3,8 +3,6 @@ import traci
 import logging
 from pathlib import Path
 
-logger = logging.getLogger("v2x")
-
 class DataCollector:
     def __init__(self, batch_size=1000, reset_on_start=True):
                 src_dir = Path(__file__).resolve().parent
