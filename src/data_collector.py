@@ -6,8 +6,9 @@ from pathlib import Path
 logger = logging.getLogger("v2x")
 
 class DataCollector:
-    def __init__(self, out_dir="data", batch_size=1000, reset_on_start=True):
-                self.out_dir = Path(out_dir)
+    def __init__(self, batch_size=1000, reset_on_start=True):
+                src_dir = Path(__file__).resolve().parent
+                self.out_dir = src_dir / "data"
                 self.batch_size = batch_size
                 self.buffer = []
                 # making the directory in a file named Data
