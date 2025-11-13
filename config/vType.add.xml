@@ -1,7 +1,13 @@
-<additional>
-    <vType id="passenger" accel="2.6" decel="4.5" length="5" maxSpeed="13.9"/>
-    <vType id="bus" accel="1.2" decel="4.0" length="12" maxSpeed="11"/>
-    <vType id="ambulance" vClass="emergency" speedFactor="1.3" guiShape="emergency">
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!-- generated on 2025-11-11T15:42:49.625137+02:00 by Eclipse SUMO netedit v1_24_0+1549-ae831a14bcc
+-->
+
+<routes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/routes_file.xsd">
+    <!-- VTypes -->
+    <vType id="bus" length="12.00" maxSpeed="11.00" accel="1.2" decel="4.0"/>
+    <vType id="emergency" speedFactor="normc(1.20,0.00)" vClass="emergency" guiShape="emergency">
         <param key="has.bluelight.device" value="true"/>
     </vType>
-</additional>
+    <vType id="passenger" length="5.00" maxSpeed="13.90" accel="2.6" decel="4.5"/>
+</routes>
