@@ -3,55 +3,58 @@ from typing import Iterable
 import numpy as np
 import gymnasium as gym
 import traci
-
+import logging
 from base_v2x_feature import BaseV2XFeature
+logger = logging.getLogger("v2x.features")
 
-PRIORITY_PREFIXES: tuple[str, ...] = ("amb", "fire", "pol")
-TRIGGER_DISTANCE: float = 35.0          # meters
-SLOWDOWN_FACTOR: float = 0.35           # 35% of current speed while yielding
-YIELD_DURATION_STEPS: int = 3           # seconds to keep lane change order
+
+TRIGGER_DISTANCE: float = 100.0          # meters
+SLOWDOWN_FACTOR: float = 0.75           # 75% of current speed while yielding
+YIELD_DURATION_STEPS: int = 6           # seconds to keep lane change order
 
 # Safety limits
 MIN_SPEED_AFTER_SLOWDOWN: float = 0.0   # allow full stop
-MAX_BULK_COMMANDS_PER_STEP: int = 500   # avoid sending too many TraCI cmds
+MAX_BULK_COMMANDS_PER_STEP: int = 50   # avoid sending too many TraCI cmds
 
+
+PRIORITY_TYPES = ("ambulance",)
 
 def _is_priority(veh_id: str) -> bool:
-    v = veh_id.lower()
-    return any(v.startswith(p.lower()) for p in PRIORITY_PREFIXES)
+    try:
+        return traci.vehicle.getTypeID(veh_id) in PRIORITY_TYPES
+    except traci.TraCIException:
+        return False
 
 
 def _euclid2(p1, p2) -> float:
+    # Fast squared distance (avoids slow sqrt); used to check proximity
     dx = p1[0] - p2[0]
     dy = p1[1] - p2[1]
     return dx * dx + dy * dy
 
 
 class PriorityCorridorFeature(BaseV2XFeature):
-    def __init__(self, enabled: bool = True):
+    def __init__(self, feature_name="PriorityCorridorFeature", enabled=True):
         super().__init__(enabled=enabled)
-        self._priority_speed_mode = 0  # 0 = allow direct speed control
-        self._priority_lc_mode = 0     # 0 = allow direct lane control
+        self.feature_name = feature_name
+        self.observation_size = 3  # dummy observation size
+        self.action_size = 2
 
-        # Rule-based: empty spaces
-        self._obs_space = gym.spaces.Box(low=0.0, high=0.0, shape=(0,), dtype=np.float32)
-        self._act_space = gym.spaces.Discrete(1)
+    def get_observation_space(self):
+        return gym.spaces.Box(low=0, high=1, shape=(self.observation_size,))
 
-    def get_observation_space(self) -> gym.Space:
-        return self._obs_space
+    def get_action_space(self):
+        return gym.spaces.Discrete(self.action_size)
 
-    def get_action_space(self) -> gym.Space:
-        return self._act_space
+    def get_observation(self):
+        dummy_obs = [0.1, 0.2, 0.3]  # dummy observation data
+        logger.debug(f"[{self.feature_name}] Observation: {dummy_obs}")
+        return np.array(dummy_obs)
 
-
-    def get_observation(self) -> np.ndarray:
-        return np.zeros((0,), dtype=np.float32)
-
-    def calculate_reward(self) -> float:
-        return 0.0
-
-    def feature_reset(self):
-        pass
+    def calculate_reward(self):
+        dummy_reward = 0.5  # dummy reward
+        logger.debug(f"[{self.feature_name}] Reward: {dummy_reward}")
+        return dummy_reward
 
     def take_action(self, action) -> None:
         if not self.enable:
@@ -77,12 +80,6 @@ class PriorityCorridorFeature(BaseV2XFeature):
             if p not in pos or p not in edge:
                 continue
 
-            # Make priority vehicles less constrained so they can overtake
-            try:
-                traci.vehicle.setSpeedMode(p, self._priority_speed_mode)
-                traci.vehicle.setLaneChangeMode(p, self._priority_lc_mode)
-            except traci.TraCIException:
-                pass
 
             p_edge = edge[p]
             p_pos = pos[p]
@@ -103,8 +100,8 @@ class PriorityCorridorFeature(BaseV2XFeature):
                 # Issue yield directives: change to lane 0 and slow down
                 try:
                     traci.vehicle.changeLane(v, 0, YIELD_DURATION_STEPS)
-                    cur = traci.vehicle.getSpeed(v)
-                    new_speed = max(MIN_SPEED_AFTER_SLOWDOWN, cur * SLOWDOWN_FACTOR)
+                    current_speed = traci.vehicle.getSpeed(v)
+                    new_speed = max(MIN_SPEED_AFTER_SLOWDOWN, current_speed * SLOWDOWN_FACTOR)
                     traci.vehicle.setSpeedMode(v, 0)
                     traci.vehicle.setSpeed(v, new_speed)
 
@@ -115,4 +112,11 @@ class PriorityCorridorFeature(BaseV2XFeature):
                     continue
 
     def feature_step(self):
-        self.take_action(action=None)
+        # default behavior: don't spam the console for rule-based runs
+        logger.debug(f"[{self.feature_name}] Step completed")
+
+    def feature_reset(self):
+        logger.debug(f"[{self.feature_name}] Reset")
+
+    def get_feature_name(self):
+        return self.feature_name
