@@ -1,6 +1,5 @@
 import traci
 from pathlib import Path
-import argparse
 
 from simulation_runner import SimulationRunner
 from base_sumo_env import BaseSumoEnvironment
@@ -36,22 +35,12 @@ class RunnerWithCollector(SimulationRunner):
 
     def run_with_steps(self):
         for step in range(self.simulation_steps):
-            traci.simulationStep()
+            self.env.step(0)
             current_time = traci.simulation.getTime()
             vehicle_count = traci.vehicle.getIDCount()
             logger.info(f"Step {step}: Time {current_time:.1f}s: Vehicles in simulation: {vehicle_count}")
             self.collector.collect(current_time)
         self.collector.flush()
-
-def parse_arguments():
-    args = SimulationRunner.parse_arguments()
-
-    extra = argparse.ArgumentParser(add_help=False)
-    extra.add_argument("--out-dir", type=str, default="data", help="Output directory for CSVs")
-    extras, _ = extra.parse_known_args()
-
-    args.out_dir = extras.out_dir
-    return args
 
 def resolve_config():
     """Using the normal config if it exists at the normal path"""
@@ -82,11 +71,10 @@ def run_once(config_path: str, steps: int | None, gui: bool,
     runner.start_simulation()
 
 def main():
-    args = parse_arguments()
+    args = SimulationRunner.parse_arguments()
     cfg = resolve_config()
-    out_dir = args.out_dir
 
-    baseline_collector = DataCollector(out_dir=out_dir, batch_size=1000, reset_on_start=True)
+    baseline_collector = DataCollector(batch_size=1000, reset_on_start=True)
     run_once(
         config_path=cfg,
         steps=args.steps,
@@ -95,12 +83,13 @@ def main():
         collector=baseline_collector
     )
 
-    csv_path = Path(out_dir) / "vehicles.csv"
-    baseline_path = Path(out_dir) / "vehicles_baseline.csv"
+    src_dir = Path(__file__).resolve().parent
+    csv_path = src_dir / "data" / "vehicles.csv"
+    baseline_path = src_dir / "data" / "vehicles_baseline.csv"
     if csv_path.exists():
         csv_path.rename(baseline_path)
 
-    params_collector = DataCollector(out_dir=out_dir, batch_size=1000, reset_on_start=True)
+    params_collector = DataCollector(batch_size=1000, reset_on_start=True)
     run_once(
         config_path=cfg,
         steps=args.steps,

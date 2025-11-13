@@ -3,11 +3,10 @@ import traci
 import logging
 from pathlib import Path
 
-logger = logging.getLogger("v2x")
-
 class DataCollector:
-    def __init__(self, out_dir="data", batch_size=1000, reset_on_start=True):
-                self.out_dir = Path(out_dir)
+    def __init__(self, batch_size=1000, reset_on_start=True):
+                src_dir = Path(__file__).resolve().parent
+                self.out_dir = src_dir / "data"
                 self.batch_size = batch_size
                 self.buffer = []
                 # making the directory in a file named Data
@@ -58,11 +57,12 @@ class DataCollector:
                     self.prev_time[vid] = time
 
                     # stops counter
-                    stopped_now = speed_now < 0.1
-                    if stopped_now and not self.was_stopped[vid]:
+                    is_stopped_now = speed_now < 0.1
+
+                    if is_stopped_now and not self.was_stopped[vid]:
                         self.stops[vid] += 1
 
-                    self.was_stopped[vid] = stopped_now
+                    self.was_stopped[vid] = is_stopped_now
 
                     trip_time_now = time - self.start_time[vid]
                     distance_now = traci.vehicle.getDistance(vid)
