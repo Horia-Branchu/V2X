@@ -17,11 +17,11 @@ MIN_SPEED_AFTER_SLOWDOWN: float = 0.0   # allow full stop
 MAX_BULK_COMMANDS_PER_STEP: int = 50   # avoid sending too many TraCI cmds
 
 
-PRIORITY_TYPES = ("ambulance",)
+PRIORITY_TYPES = "emergency"
 
 def _is_priority(veh_id: str) -> bool:
     try:
-        return traci.vehicle.getTypeID(veh_id) in PRIORITY_TYPES
+        return traci.vehicle.getTypeID(veh_id) == PRIORITY_TYPES
     except traci.TraCIException:
         return False
 
@@ -104,6 +104,12 @@ class PriorityCorridorFeature(BaseV2XFeature):
                     new_speed = max(MIN_SPEED_AFTER_SLOWDOWN, current_speed * SLOWDOWN_FACTOR)
                     traci.vehicle.setSpeedMode(v, 0)
                     traci.vehicle.setSpeed(v, new_speed)
+
+                    logger.info(
+                        f"[{self.feature_name}] YIELD: {v} -> lane 0 "
+                        f"(dist={(_euclid2(pos[v], p_pos)) ** 0.5:.1f}m, "
+                        f"new_speed={new_speed:.2f}) @ {traci.simulation.getTime():.1f}s"
+                    )
 
                     cmds_sent += 1
                     if cmds_sent >= MAX_BULK_COMMANDS_PER_STEP:
