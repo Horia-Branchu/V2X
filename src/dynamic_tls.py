@@ -1,7 +1,8 @@
 import numpy as np
 import gymnasium as gym
 import logging
-import traci
+# import traci
+import libsumo as traci
 from base_v2x_feature import BaseV2XFeature
 
 # feature-level logger; routine per-step data goes to DEBUG, important events should use INFO
@@ -50,7 +51,7 @@ class DynamicTLS(BaseV2XFeature):
                 vehicle_pos = traci.vehicle.getLanePosition(v_id)
                 if lane_length - vehicle_pos < detection_range:
                     near_tls.append(v_id)
-            
+
             if near_tls:
                 approaching[lane_id] = near_tls
 
@@ -86,7 +87,7 @@ class DynamicTLS(BaseV2XFeature):
                 if tls_state[i].lower() != 'g':
                     return False
         return True
-    
+
     # Prints SPaT (Signal Phase and Timing) messages to console
     def spat_message_log(self,message):
         timestamp = traci.simulation.getTime()
@@ -122,13 +123,13 @@ class DynamicTLS(BaseV2XFeature):
             if distance_to_tls < self.detection_range:
 
                 remaining = traci.trafficlight.getNextSwitch(tls_id) - traci.simulation.getTime()
-            
+
                 # Case 1: Extend already green light
                 if self.is_lane_green(tls_id, lane_id) and remaining < self.extend_time:
                     traci.trafficlight.setPhaseDuration(tls_id, self.extend_time)
                     self.spat_message_log(f"Vehicle {v_id} approaching {tls_id}, extending GREEN for {self.extend_time}s.")
                     return
-                
+
                 # Case 2: Turn green if only one lane is approaching
                 approaching = self.get_approaching_vehicles_by_lane(tls_id, self.detection_range)
 
@@ -139,7 +140,7 @@ class DynamicTLS(BaseV2XFeature):
                         self.tls_override_times[tls_id] = current_time
                         self.spat_message_log(f"Only vehicles on lane {lane_id} near {tls_id}, switching to GREEN")
                     return
-                
+
                 # Case 3: Turn light green if there is only one vehicle waiting for a lot of vehicles to pass
                 edge_counts = {edge: len(v_list) for edge, v_list in approaching.items()}
 
@@ -158,7 +159,7 @@ class DynamicTLS(BaseV2XFeature):
                             self.tls_override_times[tls_id] = traci.simulation.getTime()
                             self.spat_message_log(f"Imbalance detected at {tls_id}, granting short green for lane {min_edge}\033[0m")
         return
-    
+
     def take_action(self, action):
 
         for tls_id in traci.trafficlight.getIDList():
