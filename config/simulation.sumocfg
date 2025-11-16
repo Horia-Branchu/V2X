@@ -1,20 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<!-- generated on 2025-10-29T11:42:15.643477+02:00 by Eclipse SUMO sumo v1_24_0+1549-ae831a14bcc
+<!-- generated on 2025-11-11T15:42:49.628485+02:00 by Eclipse SUMO sumo v1_24_0+1549-ae831a14bcc
 -->
 
 <sumoConfiguration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/sumoConfiguration.xsd">
 
     <input>
         <net-file value="cluj_network.net.xml.gz"/>
-        <route-files value="cluj_traffic.passenger.trips.xml"/>
-        <additional-files value="cluj_polygons.poly.xml.gz,output.add.xml,vType.add.xml"/>
+        <route-files value="cluj_traffic.passenger.trips.xml,cluj_traffic.passenger2.trips.xml,cluj_traffic.emergency.trips.xml"/>
+        <additional-files value="cluj_polygons.poly.xml.gz,vType.add.xml"/>
     </input>
-
-    <output>
-        <tripinfo-output value="tripinfos.xml"/>
-        <statistic-output value="stats.xml"/>
-    </output>
 
     <processing>
         <ignore-route-errors value="true"/>
@@ -27,9 +22,7 @@
     </routing>
 
     <report>
-        <verbose value="false"/>
-        <message-log value="false"/>
-        <error-log value="false"/>
+        <no-warnings value="true"/>
         <no-step-log value="true"/>
     </report>
 
