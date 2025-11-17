@@ -4,30 +4,23 @@ import numpy as np
 import gymnasium as gym
 import traci
 import logging
-import time
 from collections import defaultdict
 from base_v2x_feature import BaseV2XFeature
 logger = logging.getLogger("v2x.features")
 
-
 TRIGGER_DISTANCE: float = 100.0          # meters
 SLOWDOWN_FACTOR: float = 0.75           # 75% of current speed while yielding
 YIELD_DURATION_STEPS: int = 6           # seconds to keep lane change order
-
 # Safety limits
 MIN_SPEED_AFTER_SLOWDOWN: float = 0.0   # allow full stop
 MAX_BULK_COMMANDS_PER_STEP: int = 50   # avoid sending too many TraCI cmds
-
-
 PRIORITY_TYPES = "emergency"
-
 
 def _euclid2(p1, p2) -> float:
     # Fast squared distance (avoids slow sqrt); used to check proximity
     dx = p1[0] - p2[0]
     dy = p1[1] - p2[1]
     return dx * dx + dy * dy
-
 
 class PriorityCorridorFeature(BaseV2XFeature):
     def __init__(self, feature_name="PriorityCorridorFeature", enabled=True):
@@ -38,9 +31,6 @@ class PriorityCorridorFeature(BaseV2XFeature):
         # internal caches
         self._known_priority_ids: set[str] = set()  # discovered emergency vehicles
         self._yielded: set[str] = set()             # vehicles that already yielded
-        # performance counters (steps/time)
-        self._perf_start_time = None
-        self._perf_step_counter: int = 0
     def get_observation_space(self):
         return gym.spaces.Box(low=0, high=1, shape=(self.observation_size,))
 
@@ -60,128 +50,126 @@ class PriorityCorridorFeature(BaseV2XFeature):
     def take_action(self, action) -> None:
         if not self.enable:
             return
-        # performance measurement(real-time speed of simulation)
-        if self._perf_start_time is None:
-            # start timing on first step
-            self._perf_start_time = time.time()
-
-        self._perf_step_counter += 1
-
-        # compute real time
-        elapsed = time.time() - self._perf_start_time
-
-        # log every 50 steps to avoid spam
-        if elapsed > 0 and self._perf_step_counter % 50 == 0:
-            steps_per_sec = self._perf_step_counter / elapsed
-            steps_per_min = steps_per_sec * 60
-            logger.info(
-                f"[{self.feature_name}] PERF: real_time={elapsed:.1f}s, "
-                f"steps={self._perf_step_counter}, "
-                f"steps/sec={steps_per_sec:.2f}, "
-                f"steps/min={steps_per_min:.1f}"
-            )
-
-        veh_ids: Iterable[str] = traci.vehicle.getIDList()
-        if not veh_ids:
+        vehicle_ids: Iterable[str] = traci.vehicle.getIDList()
+        if not vehicle_ids:
             return
         #First cache positions/edges and discover emergencies only once
-        pos: dict[str, tuple[float, float]] = {}
-        edge: dict[str, str] = {}
-        edge_to_veh: dict[str, list[str]] = defaultdict(list)
-        for vid in veh_ids:
+        positions: dict[str, tuple[float, float]] = {}
+        edges: dict[str, str] = {}
+        edge_to_vehicle_ids: dict[str, list[str]] = defaultdict(list)
+        for vehicle_id in vehicle_ids:
             try:
-                pos[vid] = traci.vehicle.getPosition(vid)
-                edge[vid] = traci.vehicle.getRoadID(vid)
-                edge_to_veh[edge[vid]].append(vid)
+                positions[vehicle_id] = traci.vehicle.getPosition(vehicle_id)
+                edge_id = traci.vehicle.getRoadID(vehicle_id)
+                edges[vehicle_id] = edge_id
+                edge_to_vehicle_ids[edge_id].append(vehicle_id)
 
                 # discover new emergency vehicles only once
-                if vid not in self._known_priority_ids:
-                    if traci.vehicle.getTypeID(vid) == PRIORITY_TYPES:
-                        self._known_priority_ids.add(vid)
-            except traci.TraCIException:
+                if vehicle_id not in self._known_priority_ids:
+                    if traci.vehicle.getTypeID(vehicle_id) == PRIORITY_TYPES:
+                        self._known_priority_ids.add(vehicle_id)
+            except traci.TraCIException as e:
+                logger.debug(
+                    "[%s] TraCIException while caching vehicle %s: %s",
+                    self.feature_name,
+                    vehicle_id,
+                    e,
+                )
                 continue
-        priors = [vid for vid in self._known_priority_ids if vid in pos]
-        if not priors:
+        priority_ids = [vid for vid in self._known_priority_ids if vid in positions]
+        if not priority_ids:
             return
         cmds_sent = 0
-        thr2 = TRIGGER_DISTANCE * TRIGGER_DISTANCE
+        trigger_distance_sq = TRIGGER_DISTANCE * TRIGGER_DISTANCE
 
-        for p in priors:
-            if p not in pos or p not in edge:
+        for priority_id in priority_ids:
+            if priority_id not in positions or priority_id not in edges:
                 continue
 
-            p_edge = edge[p]
-            p_pos = pos[p]
+            priority_edge_id = edges[priority_id]
+            priority_pos = positions[priority_id]
 
             # lane index and lane count for this edge
             try:
-                amb_lane_index = traci.vehicle.getLaneIndex(p)
-                lane_count = traci.edge.getLaneNumber(p_edge)
-            except traci.TraCIException:
+                emergency_lane_index = traci.vehicle.getLaneIndex(priority_id)
+                lane_count = traci.edge.getLaneNumber(priority_edge_id)
+            except traci.TraCIException as e:
+                logger.debug(
+                    "[%s] TraCIException while reading lane info for emergency %s on edge %s: %s",
+                    self.feature_name,
+                    priority_id,
+                    priority_edge_id,
+                    e,
+                )
                 continue
 
-            for v in edge_to_veh.get(p_edge, ()):
-                if v == p:
-                    continue
-                if v in self._known_priority_ids:
-                    continue
-                if v in self._yielded:
-                    # already yielded once, no need to spam TraCI
-                    continue
-                if v not in pos:
+            for vehicle_id in edge_to_vehicle_ids.get(priority_edge_id, ()):
+                if (
+                        vehicle_id == priority_id
+                        or vehicle_id in self._known_priority_ids
+                        or vehicle_id in self._yielded
+                        or vehicle_id not in positions
+                ):
                     continue
 
                 # Distance gate
-                dist2 = _euclid2(pos[v], p_pos)
-                if dist2 > thr2:
+                dist_sq = _euclid2(positions[vehicle_id], priority_pos)
+                if dist_sq > trigger_distance_sq:
                     continue
 
                 try:
-                    veh_lane = traci.vehicle.getLaneIndex(v)
+                    vehicle_lane_index = traci.vehicle.getLaneIndex(vehicle_id)
 
                     # Only move cars that are in the same lane as the ambulance
-                    if veh_lane != amb_lane_index:
+                    if vehicle_lane_index != emergency_lane_index:
                         continue
 
                     # Choose a valid target lane (away from ambulance)
-                    target_lane = None
+                    target_lane_index = None
 
-                    if amb_lane_index > 0:
+                    if emergency_lane_index > 0:
                         # try move right (lower index) if it exists
-                        if amb_lane_index - 1 >= 0:
-                            target_lane = amb_lane_index - 1
+                        if emergency_lane_index - 1 >= 0:
+                            target_lane_index = emergency_lane_index - 1
                     else:
                         # ambulance in lane 0 → try lane 1 if the edge has >1 lane
-                        if amb_lane_index + 1 < lane_count:
-                            target_lane = amb_lane_index + 1
+                        if emergency_lane_index + 1 < lane_count:
+                            target_lane_index = emergency_lane_index + 1
 
                     # No valid lane to move to (single-lane edge)
-                    if target_lane is None or target_lane == veh_lane:
+                    if target_lane_index is None or target_lane_index == vehicle_lane_index:
                         continue
 
-                    traci.vehicle.changeLane(v, target_lane, YIELD_DURATION_STEPS)
+                    traci.vehicle.changeLane(vehicle_id, target_lane_index, YIELD_DURATION_STEPS)
 
-                    current_speed = traci.vehicle.getSpeed(v)
+                    current_speed = traci.vehicle.getSpeed(vehicle_id)
                     new_speed = max(
                         MIN_SPEED_AFTER_SLOWDOWN,
                         current_speed * SLOWDOWN_FACTOR,
                     )
-                    traci.vehicle.setSpeedMode(v, 0)
-                    traci.vehicle.setSpeed(v, new_speed)
+                    traci.vehicle.setSpeedMode(vehicle_id, 0)
+                    traci.vehicle.setSpeed(vehicle_id, new_speed)
 
                     # remember that this vehicle already yielded
-                    self._yielded.add(v)
+                    self._yielded.add(vehicle_id)
 
                     logger.info(
-                        f"[{self.feature_name}] YIELD: {v} -> lane {target_lane} "
-                        f"(dist={dist2 ** 0.5:.1f}m, new_speed={new_speed:.2f}) "
+                        f"[{self.feature_name}] YIELD: {vehicle_id} -> lane {target_lane_index} "
+                        f"(dist={dist_sq ** 0.5:.1f}m, new_speed={new_speed:.2f}) "
                         f"@ {traci.simulation.getTime():.1f}s"
                     )
 
                     cmds_sent += 1
                     if cmds_sent >= MAX_BULK_COMMANDS_PER_STEP:
                         return
-                except traci.TraCIException:
+                except traci.TraCIException as e:
+                    logger.debug(
+                        "[%s] TraCIException while yielding vehicle %s on edge %s: %s",
+                        self.feature_name,
+                        vehicle_id,
+                        priority_edge_id,
+                        e,
+                    )
                     continue
 
     def feature_step(self):
