@@ -2,7 +2,7 @@
 
 <!-- generated on 2025-11-17 10:42:59.625319 by Eclipse SUMO randomTrips.py v1_24_0+1549-ae831a14bcc
 <configuration>
-    <net-file value="cluj_network.net.xml.gz"/>
+    <net-file value="cluj_network.net.backup.xml.gz"/>
     <weights-prefix value="center_weights"/>
     <output-trip-file value="cluj_traffic.passenger.trips.xml"/>
     <prefix value="p1_"/>
