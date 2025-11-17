@@ -1,7 +1,6 @@
 import numpy as np
 import gymnasium as gym
 import logging
-# import traci
 import libsumo as traci
 from base_v2x_feature import BaseV2XFeature
 

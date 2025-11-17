@@ -1,5 +1,4 @@
 import pandas as pd
-# import traci
 import libsumo as traci
 import logging
 from pathlib import Path

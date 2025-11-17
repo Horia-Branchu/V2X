@@ -1,4 +1,3 @@
-# import traci
 import libsumo as traci
 from pathlib import Path
 

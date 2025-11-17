@@ -1,5 +1,4 @@
 import gymnasium as gym
-# import traci
 import libsumo as traci
 import logging
 import platform
@@ -67,8 +66,7 @@ class BaseSumoEnvironment(gym.Env):
             self.features.append(DummyFeature("RerouteFeature"))
 
     def _build_sumo_command(self):
-        base_cmd = ["sumo-gui" if self.gui else "sumo","-c", self.sumo_config, "--threads", "8"]
-        print(base_cmd)
+        base_cmd = ["sumo-gui" if self.gui else "sumo", "-c", self.sumo_config]
         return base_cmd
 
     def reset(self, seed=None, options=None):
