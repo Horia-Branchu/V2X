@@ -11,6 +11,7 @@
 │   │   └── [ppo.py](#ppo)<br>
 │   ├── [base_sumo_env.py](#base-sumo-environment) <br>
 │   ├── [base_v2x_feature.py](#base-v2x-feature) <br>
+│   ├── [dynamic_tls.py](#dynamic-tls) <br>
 │   └── [simulation_runner.py](#simulation-runner-class) <br>
 
 
@@ -220,5 +221,121 @@ Initializes the base V2X feature
 **Output:** (None)
 
 **What it does:** To be implemented in the child class
+
+# Dynamic TLS
+
+### Constructor
+Initializes the DynamicTLS feature module responsible for adaptive traffic light behavior.
+
+**Input:**
+- `feature_name` (str): Name of the feature (default: "DynamicTLS").
+- `enabled` (bool): Whether the feature is active (default: True).
+
+**Output:**
+`None` (initializes internal state)
+
+**What it does:**
+Creates and configures the dynamic traffic-light-control feature, defining observation/action sizes, vehicle detection range, green-light extension duration, and bookkeeping structures for temporary TLS overrides.
+
+### get_approaching_vehicles_by_lane(tls_id)
+Groups approaching vehicles per lane within the configured detection range.
+
+**Input:**
+- `tls_id` (str): Traffic light identifier.
+
+**Output:**
+- `approaching` (Dictionary): { lane_id: [vehicle_ids...] }
+
+**What it does:**
+- For each controlled lane:
+- Retrieves active vehicles
+- Computes distance to the intersection,
+- Includes only vehicles within the detection range (default: 50 m).
+
+### get_lanes_on_same_street(tls_id, lane_id)
+Finds all lanes associated with the same road segment.
+
+**Input:**
+- `tls_id` (str): Traffic light identifier.
+- `lane_id` (str): Reference lane.
+
+**Output:**
+
+- `same_street_lanes` (List): lane IDs belonging to the same street.
+
+**What it does:**
+- Matches edges between the reference lane and all lanes controlled by the TLS, returning those on the same road.
+
+### set_tls_green_for_vehicle(tls_id, v_id)
+Overrides TLS signals so a specific vehicle's lane receives green.
+
+**Input:**
+- `tls_id` (str): Traffic light identifier.
+- `v_id` (str): Vehicle ID.
+
+**Output:**
+- `None`
+
+**What it does:**
+- Identifies all lanes on the vehicle's street,
+- Reconstructs the TLS phase string,
+- Switches only those lanes to green,
+- Applies the updated signal immediately.
+
+### is_lane_green(tls_id, lane_id)
+Checks whether the TLS currently shows green for a given lane.
+
+**Input:**
+- `tls_id` (str): Traffic light identifier.
+- `lane_id` (str): Lane to query.
+
+**Output:**
+- `True` if green, otherwise `False`.
+
+**What it does:**
+- Matches TLS phase indices to controlled lanes and checks whether the current signal color is green.
+
+### spat_message_log(message)
+Logs a SPaT (Signal Phase and Timing) message.
+
+**Input:**
+- `message` (str): Message text.
+
+**Output:**
+- `None`
+
+**What it does:**
+- Logs the provided message with simulation timestamp at INFO level.
+
+### dynamic_tls(tls_id)
+Main rule-based adaptive traffic signal controller.
+
+**Input:**
+- `tls_id` (str): Traffic light identifier.
+
+**Output:**
+- `None`
+
+**What it does:**
+1. Implements dynamic traffic-light control logic:
+2. Restores the default TLS program when override expires.
+3. Detects approaching vehicles grouped by lane.
+4. Extends green time when a vehicle is close.
+5. Switches to green if only one direction has approaching vehicles.
+6. Resolves lane imbalance by temporarily giving green to lightly used lanes.
+
+- This method is executed once per simulation step.
+
+### take_action(action)
+Executes a traffic-light update step.
+
+**Input:**
+- `action`: RL action (currently unused).
+
+**Output:**
+- `None`
+
+**What it does:**
+- Loops through all TLS systems and applies dynamic_tls() to each.
 
 # Simulation Runner Class
