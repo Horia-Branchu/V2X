@@ -3,7 +3,7 @@
 import os
 import argparse
 import logging
-import traci
+import libsumo as traci
 
 from base_sumo_env import BaseSumoEnvironment
 
