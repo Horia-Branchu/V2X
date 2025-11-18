@@ -1,5 +1,5 @@
 import gymnasium as gym
-import traci
+import libsumo as traci
 import logging
 import platform
 import subprocess

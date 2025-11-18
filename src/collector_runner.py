@@ -1,4 +1,4 @@
-import traci
+import libsumo as traci
 from pathlib import Path
 
 from simulation_runner import SimulationRunner
