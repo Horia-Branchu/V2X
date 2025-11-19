@@ -13,21 +13,21 @@ def main():
 
     args, remaining = parser.parse_known_args()
 
-    # args.rl = True
+    args.rl = True
 
     if args.runner:
         cmd = "simulation_runner"
     elif args.collect:
         cmd = "collector_runner"
     elif args.rl:
-        cmd = "ppo"
+        cmd = "rl_tester"
     else:
         parser.error("Specify --runner / --collect / --rl")
 
     module_map = {
         "simulation_runner": "src.simulation_runner",
         "collector_runner": "src.collector_runner",
-        "ppo": "src.agents.ppo",
+        "rl_tester": "src.rl_tester",
     }
 
     if cmd not in module_map:
