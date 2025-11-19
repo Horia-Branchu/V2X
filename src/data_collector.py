@@ -1,5 +1,5 @@
 import pandas as pd
-import libsumo as traci
+import traci
 import logging
 from pathlib import Path
 
@@ -121,4 +121,3 @@ class DataCollector:
 
         df.to_csv(self.csv_path, mode="a", index=False, header=write_header)
         self.buffer = []
-
