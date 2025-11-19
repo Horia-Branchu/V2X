@@ -7,21 +7,27 @@ import os
 def main():
     parser = argparse.ArgumentParser(description="Run simulation modules")
     group = parser.add_mutually_exclusive_group()
-    group.add_argument("--runner", action="store_true", help="Run simulation_runner")
+    group.add_argument("--runner",  action="store_true", help="Run simulation_runner")
     group.add_argument("--collect", action="store_true", help="Run data_collector")
+    group.add_argument("--rl",      action="store_true", help="Run ppo")
 
     args, remaining = parser.parse_known_args()
+
+    # args.rl = True
 
     if args.runner:
         cmd = "simulation_runner"
     elif args.collect:
         cmd = "collector_runner"
+    elif args.rl:
+        cmd = "ppo"
     else:
-        parser.error("Specify --runner / --collect")
+        parser.error("Specify --runner / --collect / --rl")
 
     module_map = {
         "simulation_runner": "src.simulation_runner",
         "collector_runner": "src.collector_runner",
+        "ppo": "src.agents.ppo",
     }
 
     if cmd not in module_map:

@@ -3,7 +3,7 @@ from stable_baselines3.common.env_checker import check_env
 from base_sumo_env import BaseSumoEnvironment
 
 # create the test enviroment ( will be merged with mihai )
-env = BaseSumoEnvironment("your_config.sumocfg") # this will error out
+env = BaseSumoEnvironment("config/simulation.sumocfg") # this will error out
 check_env(env)  # Validate your environment
 
 # init the model
