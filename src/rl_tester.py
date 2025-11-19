@@ -5,26 +5,28 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 from stable_baselines3 import PPO
 from base_sumo_env import BaseSumoEnvironment
 
-def test_single_feature(args, sumo_config="config/simulation.sumocfg"):
+def main():
+    parser = argparse.ArgumentParser(description="Run RL features")
+    parser.add_argument("--tls", action="store_true", help="Run TLS feature")
+    parser.add_argument("--bsm", action="store_true", help="Run BSM feature")
+    args = parser.parse_args()
+
     enabled_features = []
     if args.bsm: enabled_features.append("bsm")
     if args.tls: enabled_features.append("tls")
 
     if len(enabled_features) == 0:
-        print("ERROR: Please specify one feature for RL!")
+        print("ERROR: Please specify one feature for RL testing!")
         exit(68)
 
     if len(enabled_features) > 1:
-        print("ERROR: Please specify only one feature at a time!")
+        print("ERROR: Please specify only one feature at a time testing!")
         exit(67)
 
-    feature_name = enabled_features[0]
 
-    print(f"=== {feature_name.upper()} RL TEST STARTED ===\n")
-
-    # create environment with ONLY feature selected by dev
+    # Create environment
     env = BaseSumoEnvironment(
-        sumo_config,
+        "config/simulation.sumocfg",
         gui=False,
         tls=args.tls,
         bsm=args.bsm,
@@ -32,40 +34,37 @@ def test_single_feature(args, sumo_config="config/simulation.sumocfg"):
         reroute=False
     )
 
-    # train RL agent for this feature
-    model = PPO(
-        "MlpPolicy", env, verbose=1,
-        learning_rate=0.0003,
-        n_steps=1024,
-        batch_size=64,
-        n_epochs=5,
-        # Sumo and traci runs only on CPU so it stands to reason that we should not use GPU
-        device='cpu'
-    )
+    feature_name = enabled_features[0]
 
-    print(f"Training {feature_name} feature...")
+    # load model
+    model = None
+    try:
+        model = PPO.load(f"{feature_name}_feature_model")
+        print(f"Loaded {feature_name} model")
+    except:
+        print(f"No {feature_name} model, make sure you have the model, exiting!")
+        exit(56)
 
-    model.learn(total_timesteps=10000)
-    model.save(f"{feature_name}_feature_model")
-
-    # test the trained feature
-    print(f"Testing {feature_name} feature...")
+    # run simulation until it ends
     obs, _ = env.reset()
-    for step in range(1000):
-        action, _states = model.predict(obs, deterministic=True)
+    total_reward = 0
+    step = 0
+
+    print("Starting simulation...")
+
+    while True:
+        action = model.predict(obs, deterministic=True)[0] if model else env.action_space.sample()
         obs, reward, terminated, truncated, info = env.step(action)
+        total_reward += reward
+        step += 1
 
         if terminated or truncated:
-            print(f"Episode ended at step {step}")
+            print(f"Simulation ended at step {step}")
             break
 
     env.close()
-    print(f"=== {feature_name.upper()} RL TEST COMPLETE ===\n")
+    print(f"final reward: {total_reward:.3f}")
+    print(f"total steps: {step}")
 
-# Feature developers run this to test their work
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Run rl modules")
-    parser.add_argument("--tls",  action="store_true", help="Run simulation_runner", default=False)
-    parser.add_argument("--bsm", action="store_true", help="Run data_collector", default=False)
-    # TLS Developer tests their feature
-    test_single_feature(args=parser.parse_args())
+    main()
