@@ -25,7 +25,7 @@ class BaseSumoEnvironment(gym.Env):
         super().__init__()
 
         self.sumo_config = sumo_config
-        self.current_step = 0
+        self.current_step = 1
         self.gui = gui
         # whether this environment is used for RL (verbose per-step logs) or rule-based
         self.rl = rl
