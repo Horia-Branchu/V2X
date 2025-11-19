@@ -95,7 +95,7 @@ class BaseSumoEnvironment(gym.Env):
         observation = self._get_observation()
         info = self._get_info()
 
-        return observation, info
+        return (observation, info)
 
     def _startup_spinner(self, stop_event):
         """Simple CLI spinner shown while SUMO is starting.
@@ -132,7 +132,10 @@ class BaseSumoEnvironment(gym.Env):
         try:
             current_time = traci.simulation.getTime()
             vehicle_count = traci.vehicle.getIDCount()
-            logger.info(f"Time {current_time:.1f}s: Vehicles in simulation: {vehicle_count}")
+
+            status = f"Time: {current_time:6.1f}s | Vehicles: {vehicle_count:3d}"
+            sys.stdout.write(f"\r{status}")
+            sys.stdout.flush()
         except Exception:
             # if traci not available or hasn't started yet, skip logging
             pass
@@ -164,17 +167,29 @@ class BaseSumoEnvironment(gym.Env):
     def _get_observation(self):
         """Combine observations from all features"""
         if not self.features:
-            return np.array([0])
+            return np.array([0], dtype=np.float32)  # Specify dtype
 
         obs_parts = []
         for feature in self.features:
             feature_obs = feature.get_observation()
             if isinstance(feature_obs, (list, np.ndarray)):
+                # Convert to float32 and flatten if needed
+                feature_obs = np.array(feature_obs, dtype=np.float32).flatten()
                 obs_parts.extend(feature_obs)
             else:
-                obs_parts.append(feature_obs)
+                # Convert scalar to float32
+                obs_parts.append(np.float32(feature_obs))
 
-        return np.array(obs_parts)
+        observation = np.array(obs_parts, dtype=np.float32)
+
+        # Ensure the shape matches your observation space
+        # If your observation space is (1,), make sure it has exactly 1 element
+        if observation.shape != (1,):
+            # Either reshape or handle accordingly
+            # If you need exactly 1 element, take the first one or aggregate
+            observation = np.array([observation[0]], dtype=np.float32)
+
+        return observation
 
     def _calculate_reward(self):
         """Combine rewards from all features"""
@@ -190,6 +205,15 @@ class BaseSumoEnvironment(gym.Env):
 
     def _is_terminated(self):
         """Override this for scenario-specific termination"""
+        try:
+            vehicle_count = traci.vehicle.getIDCount()
+            if vehicle_count == 0:
+                logger.info("Termination: No vehicles left in simulation")
+                return True
+        except Exception as my_ex:
+            logger.error(f"Exception caught at calling _is_terminated: {my_ex}")
+            pass
+
         return False
 
     # def _is_truncated(self):
