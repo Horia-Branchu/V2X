@@ -98,49 +98,32 @@ class SimulationRunner:
     def run_until_end(self):
         """Run simulation until it naturally ends"""
 
-        traci.simulationStep()
-        vehicle_count = traci.vehicle.getIDCount()
         try:
+            obs, reward, terminated, truncated, info = self.env.step(None)
+
+            current_time = traci.simulation.getTime()
+            vehicle_count = traci.vehicle.getIDCount()
             while (traci.simulation.getMinExpectedNumber() != 0 and vehicle_count != 0):
-                traci.simulationStep()
+                obs, reward, terminated, truncated, info = self.env.step(None)
                 current_time = traci.simulation.getTime()
                 vehicle_count = traci.vehicle.getIDCount()
-                msg = f"Time {current_time:.1f}s: Vehicles in simulation: {vehicle_count}"
-                # When running in an interactive terminal, update a single line.
-                if sys.stdout.isatty():
-                    width = shutil.get_terminal_size((80, 24))[0] #utility to determine terminal size for clearing previous content
-                    sys.stdout.write("\r" + msg.ljust(width))
-                    sys.stdout.flush()
-                else:
-                    logger.info(msg) #if not tty, log normally (for file redirection or simmilar)
 
-            # end the updating line when finished so following output appears on a newline
-            if sys.stdout.isatty():
-                print()
-
-            logger.info("Simulation ended naturally.")
+                if terminated or truncated:
+                    break
+            # BaseSumoEnvironment.step() handles final newline and final INFO
 
         except traci.exceptions.FatalTraCIError as e:
             logger.error(f"Fatal TraCI error occurred. Ending simulation: {e}")
 
     def run_with_steps(self):
         """Run simulation for a specified number of steps"""
-
         for step in range(self.simulation_steps):
-            traci.simulationStep()
+            obs, reward, terminated, truncated, info = self.env.step(None)
             current_time = traci.simulation.getTime()
             vehicle_count = traci.vehicle.getIDCount()
-            msg = f"Step {step}: Time {current_time:.1f}s: Vehicles in simulation: {vehicle_count}"
-            if sys.stdout.isatty():
-                width = shutil.get_terminal_size((80, 24))[0]
-                sys.stdout.write("\r" + msg.ljust(width))
-                sys.stdout.flush()
-            else:
-                logger.info(msg)
 
-        # finish the updating line so next outputs start on a fresh line
-        if sys.stdout.isatty():
-            print()
+            if terminated or truncated:
+                break
 
     def start_simulation(self):
         """Start the SUMO simulation with TraCI"""
