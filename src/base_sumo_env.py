@@ -3,6 +3,7 @@ import libsumo as traci
 import logging
 import sys
 import shutil
+from terminal_display import terminal_display
 import platform
 import subprocess
 import numpy as np
@@ -109,20 +110,15 @@ class BaseSumoEnvironment(gym.Env):
             vehicle_count = traci.vehicle.getIDCount()
 
             msg = f"Time {current_time:.1f}s: Vehicles in simulation: {vehicle_count}"
-            # Interactive terminal: update a single in-place line. Non-interactive:
-            # emit INFO logs so files/CI keep full records.
-            if sys.stdout.isatty():
-                width = shutil.get_terminal_size((80, 24))[0]
-                sys.stdout.write("\r" + msg.ljust(width))
-                sys.stdout.flush()
-            else:
-                logger.info(msg)
+
+            # update the shared terminal display (TTY) or emit INFO (non-TTY)
+            terminal_display.update("ENV", msg)
+            terminal_display.render()
 
             # If simulation has ended (no expected vehicles or no vehicles present),
-            # finish the updating line and emit a final INFO.
+            # finalize the display and emit a final INFO.
             if traci.simulation.getMinExpectedNumber() == 0 or vehicle_count == 0:
-                if sys.stdout.isatty():
-                    print()
+                terminal_display.finish()
                 logger.info("Simulation ended naturally.")
         except Exception:
             # if traci not available or hasn't started yet, skip logging
