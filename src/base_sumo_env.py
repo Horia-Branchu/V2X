@@ -18,7 +18,7 @@ from bsm_feature import BSMFeature
 # use a named logger for the project; features can log at DEBUG for RL and INFO for rule-based
 logger = logging.getLogger("v2x")
 if not logger.handlers:
-    handler = logging.StreamHandler()
+    handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(logging.Formatter('%(levelname)s: %(message)s'))
     logger.addHandler(handler)
 

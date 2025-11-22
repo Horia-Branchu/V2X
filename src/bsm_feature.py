@@ -170,9 +170,9 @@ class BSMFeature(BaseV2XFeature):
             pre_count = len(events["PREEMPTIVE_SLOWDOWN"])
             warn_count = len(events["WARN"])
             if em_count:
-                summary_parts.append(f"EMG={em_count}")
+                summary_parts.append(f"EMGERGENCY_BRAKE={em_count}")
             if pre_count:
-                summary_parts.append(f"PRE={pre_count}")
+                summary_parts.append(f"PREEMPTIVE_SLOWDOWN={pre_count}")
             if warn_count:
                 summary_parts.append(f"WARN={warn_count}")
 
@@ -184,7 +184,7 @@ class BSMFeature(BaseV2XFeature):
             elif events["WARN"]:
                 latest_short = events["WARN"][-1][1]
 
-            summary = f"[{self.feature_name}] Time {current_time_s:.1f}s | " + " ".join(summary_parts)
+            summary = f"[{self.feature_name}] | " + " ".join(summary_parts)
             if latest_short:
                 summary += f" | {latest_short}"
 

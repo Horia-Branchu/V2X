@@ -12,7 +12,7 @@ from base_sumo_env import BaseSumoEnvironment
 # use the project logger
 logger = logging.getLogger("v2x")
 if not logger.handlers:
-    handler = logging.StreamHandler()
+    handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(logging.Formatter('%(levelname)s: %(message)s'))
     logger.addHandler(handler)
 
