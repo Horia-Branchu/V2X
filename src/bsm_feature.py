@@ -52,8 +52,8 @@ class BSMFeature(BaseV2XFeature):
     def get_feature_name(self) -> str:
         return self.feature_name
 
-    # O(n) as you requested in our call, utilizes get leader function from TRACI api, if there is no leader ahead of a car then it skips the checks for it
-    # changes were made to differentiate between situations that trigger any sort of slowdown so that the logs are clearer, functionality is the same
+    # O(n), utilizes get leader function from TRACI api, if there is no leader ahead of a car then it skips the checks for it
+    # changes were made to differentiate between situations that trigger any sort of slowdown so that the logs are clearer
     def take_action(self, action):
         if not self.enable:
             return
