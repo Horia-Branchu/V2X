@@ -170,9 +170,9 @@ class BSMFeature(BaseV2XFeature):
             pre_count = len(events["PREEMPTIVE_SLOWDOWN"])
             warn_count = len(events["WARN"])
             if em_count:
-                summary_parts.append(f"EMGERGENCY_BRAKE={em_count}")
+                summary_parts.append(f"EMG={em_count}")
             if pre_count:
-                summary_parts.append(f"PREEMPTIVE_SLOWDOWN={pre_count}")
+                summary_parts.append(f"PRE={pre_count}")
             if warn_count:
                 summary_parts.append(f"WARN={warn_count}")
 
