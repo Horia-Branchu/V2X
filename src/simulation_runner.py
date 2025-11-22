@@ -3,6 +3,8 @@
 import os
 import argparse
 import logging
+import sys
+import shutil
 import libsumo as traci
 
 from base_sumo_env import BaseSumoEnvironment
@@ -103,8 +105,18 @@ class SimulationRunner:
                 traci.simulationStep()
                 current_time = traci.simulation.getTime()
                 vehicle_count = traci.vehicle.getIDCount()
-                # keep the original concise rule-based log line
-                logger.info(f"Time {current_time:.1f}s: Vehicles in simulation: {vehicle_count}")
+                msg = f"Time {current_time:.1f}s: Vehicles in simulation: {vehicle_count}"
+                # When running in an interactive terminal, update a single line.
+                if sys.stdout.isatty():
+                    width = shutil.get_terminal_size((80, 24))[0]
+                    sys.stdout.write("\r" + msg.ljust(width))
+                    sys.stdout.flush()
+                else:
+                    logger.info(msg)
+
+            # end the updating line when finished so following output appears on a newline
+            if sys.stdout.isatty():
+                print()
 
             logger.info("Simulation ended naturally.")
 
@@ -118,7 +130,17 @@ class SimulationRunner:
             traci.simulationStep()
             current_time = traci.simulation.getTime()
             vehicle_count = traci.vehicle.getIDCount()
-            logger.info(f"Step {step}: Time {current_time:.1f}s: Vehicles in simulation: {vehicle_count}")
+            msg = f"Step {step}: Time {current_time:.1f}s: Vehicles in simulation: {vehicle_count}"
+            if sys.stdout.isatty():
+                width = shutil.get_terminal_size((80, 24))[0] #utility to determine terminal size for clearing previous content
+                sys.stdout.write("\r" + msg.ljust(width))
+                sys.stdout.flush()
+            else:
+                logger.info(msg)
+
+        # finish the updating line so next outputs start on a fresh line
+        if sys.stdout.isatty():
+            print()
 
     def start_simulation(self):
         """Start the SUMO simulation with TraCI"""
