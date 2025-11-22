@@ -108,11 +108,11 @@ class SimulationRunner:
                 msg = f"Time {current_time:.1f}s: Vehicles in simulation: {vehicle_count}"
                 # When running in an interactive terminal, update a single line.
                 if sys.stdout.isatty():
-                    width = shutil.get_terminal_size((80, 24))[0]
+                    width = shutil.get_terminal_size((80, 24))[0] #utility to determine terminal size for clearing previous content
                     sys.stdout.write("\r" + msg.ljust(width))
                     sys.stdout.flush()
                 else:
-                    logger.info(msg)
+                    logger.info(msg) #if not tty, log normally (for file redirection or simmilar)
 
             # end the updating line when finished so following output appears on a newline
             if sys.stdout.isatty():
@@ -132,7 +132,7 @@ class SimulationRunner:
             vehicle_count = traci.vehicle.getIDCount()
             msg = f"Step {step}: Time {current_time:.1f}s: Vehicles in simulation: {vehicle_count}"
             if sys.stdout.isatty():
-                width = shutil.get_terminal_size((80, 24))[0] #utility to determine terminal size for clearing previous content
+                width = shutil.get_terminal_size((80, 24))[0]
                 sys.stdout.write("\r" + msg.ljust(width))
                 sys.stdout.flush()
             else:
