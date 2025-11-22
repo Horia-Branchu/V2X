@@ -74,17 +74,7 @@ class BaseSumoEnvironment(gym.Env):
             traci.close()
         except Exception:
             pass
-
-        # start SUMO with a CLI spinner to indicate progress while SUMO loads files
-        stop_event = threading.Event()
-        spinner_thread = threading.Thread(target=self._startup_spinner, args=(stop_event,), daemon=True)
-        spinner_thread.start()
-        try:
-            traci.start(self.sumo_cmd)
-        finally:
-            # always stop spinner whether start succeeded or raised
-            stop_event.set()
-            spinner_thread.join()
+        
         self.current_step = 0
 
         for feature in self.features:
@@ -97,28 +87,6 @@ class BaseSumoEnvironment(gym.Env):
 
         return observation, info
 
-    def _startup_spinner(self, stop_event):
-        """Simple CLI spinner shown while SUMO is starting.
-
-        Runs until stop_event is set. Keeps output minimal and compatible with
-        Windows PowerShell and typical terminals.
-        """
-        try:
-            for ch in itertools.cycle('|/-\\'):
-                if stop_event.is_set():
-                    break
-                sys.stdout.write(f"\rStarting SUMO... {ch}")
-                sys.stdout.flush()
-                time.sleep(0.12)
-        except Exception:
-            # don't crash startup on spinner errors
-            pass
-        finally:
-            try:
-                sys.stdout.write('\rSUMO startup complete.    \n')
-                sys.stdout.flush()
-            except Exception:
-                pass
 
     def step(self, action):
         # distribute action to features
