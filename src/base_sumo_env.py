@@ -74,7 +74,13 @@ class BaseSumoEnvironment(gym.Env):
             traci.close()
         except Exception:
             pass
-        
+
+        stop_event = threading.Event()
+        try:
+            traci.start(self.sumo_cmd)
+        finally:
+            stop_event.set()
+            
         self.current_step = 0
 
         for feature in self.features:
@@ -86,7 +92,6 @@ class BaseSumoEnvironment(gym.Env):
         info = self._get_info()
 
         return observation, info
-
 
     def step(self, action):
         # distribute action to features
