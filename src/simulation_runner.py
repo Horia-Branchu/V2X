@@ -8,6 +8,7 @@ import shutil
 import libsumo as traci
 
 from base_sumo_env import BaseSumoEnvironment
+from terminal_display import terminal_display
 
 # use the project logger
 logger = logging.getLogger("v2x")
@@ -99,18 +100,23 @@ class SimulationRunner:
         """Run simulation until it naturally ends"""
 
         try:
-            obs, reward, terminated, truncated, info = self.env.step(None)
+            traci.simulationStep()
 
             current_time = traci.simulation.getTime()
             vehicle_count = traci.vehicle.getIDCount()
             while (traci.simulation.getMinExpectedNumber() != 0 and vehicle_count != 0):
-                obs, reward, terminated, truncated, info = self.env.step(None)
+                traci.simulationStep()
                 current_time = traci.simulation.getTime()
                 vehicle_count = traci.vehicle.getIDCount()
 
-                if terminated or truncated:
-                    break
-            # BaseSumoEnvironment.step() handles final newline and final INFO
+                msg = f"Time {current_time:.1f}s: Vehicles: {vehicle_count}"
+                terminal_display.update("RUNNER", msg)
+                terminal_display.render()
+
+            # simulation ended naturally
+            terminal_display.finish()
+            logger.info("Simulation ended naturally.")
+
 
         except traci.exceptions.FatalTraCIError as e:
             logger.error(f"Fatal TraCI error occurred. Ending simulation: {e}")
@@ -118,12 +124,14 @@ class SimulationRunner:
     def run_with_steps(self):
         """Run simulation for a specified number of steps"""
         for step in range(self.simulation_steps):
-            obs, reward, terminated, truncated, info = self.env.step(None)
+            traci.simulationStep()
             current_time = traci.simulation.getTime()
             vehicle_count = traci.vehicle.getIDCount()
 
-            if terminated or truncated:
-                break
+            # single updating line for runner status
+            msg = f"Runner Step {step}: Time {current_time:.1f}s, Vehicles: {vehicle_count}"
+            terminal_display.update("RUNNER", msg)
+            terminal_display.render()
 
     def start_simulation(self):
         """Start the SUMO simulation with TraCI"""
