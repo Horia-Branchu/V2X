@@ -41,9 +41,7 @@ class PriorityCorridorFeature(BaseV2XFeature):
         return np.zeros(self.observation_size, dtype=np.float32)
 
     def calculate_reward(self):
-        dummy_reward = 0.5  # dummy reward
-        logger.debug(f"[{self.feature_name}] Reward: {dummy_reward}")
-        return dummy_reward
+        return 0.0
 
     def take_action(self, action) -> None:
         if not self.enable:
