@@ -14,8 +14,6 @@ def main():
 
     args, remaining = parser.parse_known_args()
 
-    # args.rl = True
-
     if args.runner:
         cmd = "simulation_runner"
     elif args.collect:
