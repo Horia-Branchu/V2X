@@ -53,7 +53,7 @@ class PriorityCorridorFeature(BaseV2XFeature):
         try:
             vehicle_ids: Iterable[str] = traci.vehicle.getIDList()
         except Exception as e:
-            logger.debug(
+            logger.error(
                 "[%s] Could not get vehicle list: %s",
                 self.feature_name,
                 e,
@@ -77,7 +77,7 @@ class PriorityCorridorFeature(BaseV2XFeature):
                     if traci.vehicle.getTypeID(vehicle_id) == PRIORITY_TYPES:
                         self._known_priority_ids.add(vehicle_id)
             except Exception as e:
-                logger.debug(
+                logger.error(
                     "[%s] TraCIException while caching vehicle %s: %s",
                     self.feature_name,
                     vehicle_id,
@@ -102,7 +102,7 @@ class PriorityCorridorFeature(BaseV2XFeature):
                 emergency_lane_index = traci.vehicle.getLaneIndex(priority_id)
                 lane_count = traci.edge.getLaneNumber(priority_edge_id)
             except Exception as e:
-                logger.debug(
+                logger.error(
                     "[%s] TraCIException while reading lane info for emergency %s on edge %s: %s",
                     self.feature_name,
                     priority_id,
@@ -132,21 +132,17 @@ class PriorityCorridorFeature(BaseV2XFeature):
                     if vehicle_lane_index != emergency_lane_index:
                         continue
 
-                    # Choose a valid target lane (away from ambulance)
-                    target_lane_index = None
-
-                    if emergency_lane_index > 0:
-                        # try move right (lower index) if it exists
-                        if emergency_lane_index - 1 >= 0:
-                            target_lane_index = emergency_lane_index - 1
-                    else:
-                        # ambulance in lane 0 → try lane 1 if the edge has >1 lane
-                        if emergency_lane_index + 1 < lane_count:
-                            target_lane_index = emergency_lane_index + 1
-
-                    # No valid lane to move to (single-lane edge)
-                    if target_lane_index is None or target_lane_index == vehicle_lane_index:
+                    # If there is only one lane on this edge, there is nowhere to move
+                    if lane_count <= 1:
                         continue
+
+                    # Choose a valid target lane (away from emergency lane)
+                    if emergency_lane_index > 0:
+                        # emergency vehicle is not in lane 0, so move cars to the right (lower index)
+                        target_lane_index = emergency_lane_index - 1
+                    else:
+                        # emergency vehicle is in lane 0, so move cars to lane 1
+                        target_lane_index = emergency_lane_index + 1
 
                     traci.vehicle.changeLane(vehicle_id, target_lane_index, YIELD_DURATION_STEPS)
 
@@ -171,7 +167,7 @@ class PriorityCorridorFeature(BaseV2XFeature):
                     if cmds_sent >= MAX_BULK_COMMANDS_PER_STEP:
                         return
                 except Exception as e:
-                    logger.debug(
+                    logger.error(
                         "[%s] TraCIException while yielding vehicle %s on edge %s: %s",
                         self.feature_name,
                         vehicle_id,
