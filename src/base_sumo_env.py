@@ -11,6 +11,7 @@ import time
 from dummy_feature import DummyFeature
 from dynamic_tls import DynamicTLS
 from bsm_feature import BSMFeature
+from priority_corridor import PriorityCorridorFeature
 
 # use a named logger for the project; features can log at DEBUG for RL and INFO for rule-based
 logger = logging.getLogger("v2x")
@@ -61,7 +62,7 @@ class BaseSumoEnvironment(gym.Env):
         if tls:
             self.features.append(DynamicTLS("DynamicTLS"))
         if priority:
-            self.features.append(DummyFeature("PriorityFeature"))
+            self.features.append(PriorityCorridorFeature("PriorityCorridorFeature"))
         if reroute:
             self.features.append(DummyFeature("RerouteFeature"))
 
