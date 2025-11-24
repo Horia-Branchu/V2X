@@ -6,7 +6,7 @@ import libsumo as traci
 import logging
 from collections import defaultdict
 from base_v2x_feature import BaseV2XFeature
-logger = logging.getLogger("v2x.features")
+logger = logging.getLogger("v2x")
 
 TRIGGER_DISTANCE: float = 100.0          # meters
 SLOWDOWN_FACTOR: float = 0.75           # 75% of current speed while yielding
@@ -38,9 +38,7 @@ class PriorityCorridorFeature(BaseV2XFeature):
         return gym.spaces.Discrete(self.action_size)
 
     def get_observation(self):
-        dummy_obs = [0.1, 0.2, 0.3]  # dummy observation data
-        logger.debug(f"[{self.feature_name}] Observation: {dummy_obs}")
-        return np.array(dummy_obs)
+        return np.zeros(self.observation_size, dtype=np.float32)
 
     def calculate_reward(self):
         dummy_reward = 0.5  # dummy reward
