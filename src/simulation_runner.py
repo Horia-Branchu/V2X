@@ -4,9 +4,8 @@ import os
 import argparse
 import logging
 import libsumo as traci
-
 from base_sumo_env import BaseSumoEnvironment
-
+from progress_bar import ProgressBar
 # use the project logger
 logger = logging.getLogger("v2x")
 if not logger.handlers:
@@ -95,17 +94,26 @@ class SimulationRunner:
 
     def run_until_end(self):
         """Run simulation until it naturally ends"""
-
+        arrived_total=0
+        progressbar = ProgressBar()
+        progressbar.load_trip_paths()
+        progressbar.count_total_trips()
         traci.simulationStep()
+        """don't print anything here, only after the while, if you want to
+         display information while the status bar is running,
+          use the info parameter of progressbar.display() method."""
+        progressbar.display(arrived_total)
         vehicle_count = traci.vehicle.getIDCount()
         try:
             while (traci.simulation.getMinExpectedNumber() != 0 and vehicle_count != 0):
                 traci.simulationStep()
+                arrived_total+= traci.simulation.getArrivedNumber()
                 current_time = traci.simulation.getTime()
                 vehicle_count = traci.vehicle.getIDCount()
                 # keep the original concise rule-based log line
-                logger.info(f"Time {current_time:.1f}s: Vehicles in simulation: {vehicle_count}")
-
+                info=f"Time {current_time:.1f}s: Vehicles in simulation: {vehicle_count}"
+                progressbar.display(arrived_total, info)
+            """end the progress bar line, from here on, you can print normally"""
             logger.info("Simulation ended naturally.")
 
         except traci.exceptions.FatalTraCIError as e:
