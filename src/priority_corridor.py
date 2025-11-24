@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import Iterable
 import numpy as np
 import gymnasium as gym
-import traci
+import libsumo as traci
 import logging
 from collections import defaultdict
 from base_v2x_feature import BaseV2XFeature
@@ -50,7 +50,15 @@ class PriorityCorridorFeature(BaseV2XFeature):
     def take_action(self, action) -> None:
         if not self.enable:
             return
-        vehicle_ids: Iterable[str] = traci.vehicle.getIDList()
+        try:
+            vehicle_ids: Iterable[str] = traci.vehicle.getIDList()
+        except Exception as e:
+            logger.debug(
+                "[%s] Could not get vehicle list: %s",
+                self.feature_name,
+                e,
+            )
+            return
         if not vehicle_ids:
             return
         #First cache positions/edges and discover emergencies only once
@@ -68,7 +76,7 @@ class PriorityCorridorFeature(BaseV2XFeature):
                 if vehicle_id not in self._known_priority_ids:
                     if traci.vehicle.getTypeID(vehicle_id) == PRIORITY_TYPES:
                         self._known_priority_ids.add(vehicle_id)
-            except traci.TraCIException as e:
+            except Exception as e:
                 logger.debug(
                     "[%s] TraCIException while caching vehicle %s: %s",
                     self.feature_name,
@@ -93,7 +101,7 @@ class PriorityCorridorFeature(BaseV2XFeature):
             try:
                 emergency_lane_index = traci.vehicle.getLaneIndex(priority_id)
                 lane_count = traci.edge.getLaneNumber(priority_edge_id)
-            except traci.TraCIException as e:
+            except Exception as e:
                 logger.debug(
                     "[%s] TraCIException while reading lane info for emergency %s on edge %s: %s",
                     self.feature_name,
@@ -162,7 +170,7 @@ class PriorityCorridorFeature(BaseV2XFeature):
                     cmds_sent += 1
                     if cmds_sent >= MAX_BULK_COMMANDS_PER_STEP:
                         return
-                except traci.TraCIException as e:
+                except Exception as e:
                     logger.debug(
                         "[%s] TraCIException while yielding vehicle %s on edge %s: %s",
                         self.feature_name,
