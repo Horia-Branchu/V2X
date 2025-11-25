@@ -2,7 +2,6 @@ import gymnasium as gym
 import libsumo as traci
 import logging
 import sys
-import shutil
 from terminal_display import terminal_display
 import platform
 import subprocess

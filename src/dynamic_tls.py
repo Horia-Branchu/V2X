@@ -2,7 +2,6 @@ import numpy as np
 import gymnasium as gym
 import logging
 import sys
-import shutil
 import libsumo as traci
 from terminal_display import terminal_display
 from base_v2x_feature import BaseV2XFeature
@@ -21,7 +20,7 @@ class DynamicTLS(BaseV2XFeature):
         self.detection_range = 50       # meters
         self.extend_time = 5            # seconds
         self.tls_override_times = {}    # {tls_id: timestamp}
-        self._tls_events = [] # per-step event buffer for compact TTY display or verbose non-TTY logs
+        self._tls_log_events = [] # per-step event buffer for compact TTY display or verbose non-TTY logs
     def get_observation_space(self):
         return gym.spaces.Box(low=0, high=1, shape=(self.observation_size,))
 
@@ -89,7 +88,7 @@ class DynamicTLS(BaseV2XFeature):
         )
         # short version for TTY display: first clause or truncated form
         short = message.split(',')[0]
-        self._tls_events.append((verbose, short))
+        self._tls_log_events.append((verbose, short))
 
     # Main dynamic TLS control function:
     # - detects vehicles approaching intersections
@@ -170,22 +169,22 @@ class DynamicTLS(BaseV2XFeature):
     
     def take_action(self, action):
         # clear per-step buffer
-        self._tls_events.clear()
+        self._tls_log_events.clear()
 
         for tls_id in traci.trafficlight.getIDList():
             self.dynamic_tls(tls_id)
 
         # after processing TLSs, emit compact summary for TTY or verbose logs otherwise
-        if self._tls_events:
+        if self._tls_log_events:
             if sys.stdout.isatty():
                 # counts and latest short message
-                tls_count = len(self._tls_events)
-                latest_short = self._tls_events[-1][1]
-                summary = f"[{self.feature_name}] | TLS_EVENTS={tls_count} | {latest_short}"
+                tls_count = len(self._tls_log_events)
+                latest_short = self._tls_log_events[-1][1]
+                summary = f"[{self.feature_name}] | tls_log_events={tls_count} | {latest_short}"
                 terminal_display.update("TLS", summary)
                 terminal_display.render()
             else:
-                for verbose, _ in self._tls_events:
+                for verbose, _ in self._tls_log_events:
                     logger.info(verbose)
 
     def get_observation(self):

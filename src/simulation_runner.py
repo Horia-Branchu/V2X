@@ -4,7 +4,6 @@ import os
 import argparse
 import logging
 import sys
-import shutil
 import libsumo as traci
 
 from base_sumo_env import BaseSumoEnvironment
@@ -113,7 +112,6 @@ class SimulationRunner:
                 terminal_display.update("RUNNER", msg)
                 terminal_display.render()
 
-            # simulation ended naturally
             terminal_display.finish()
             logger.info("Simulation ended naturally.")
 
@@ -129,7 +127,7 @@ class SimulationRunner:
             vehicle_count = traci.vehicle.getIDCount()
 
             # single updating line for runner status
-            msg = f"Runner Step {step}: Time {current_time:.1f}s, Vehicles: {vehicle_count}"
+            msg = f"Time {current_time:.1f}s: Vehicles: {vehicle_count}"
             terminal_display.update("RUNNER", msg)
             terminal_display.render()
 

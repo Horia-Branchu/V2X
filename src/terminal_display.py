@@ -6,16 +6,6 @@ logger = logging.getLogger("v2x")
 
 
 class TerminalDisplay:
-    """Manage multiple in-place terminal lines with non-TTY fallback.
-
-    - `update(key, text)`: set the text for a named slot.
-    - `render()`: write lines to the terminal (or emit logs in non-TTY).
-    - `finish()`: end the interactive block (print newline when TTY).
-
-    This is intentionally small and dependency-free so features and the
-    environment can both import it without circular imports.
-    """
-
     def __init__(self, keys=None, logger_obj=None):
         self.keys = list(keys) if keys else []
         self._values = {k: "" for k in self.keys}
