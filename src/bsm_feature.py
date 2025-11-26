@@ -54,6 +54,42 @@ class BSMFeature(BaseV2XFeature):
     def get_feature_name(self) -> str:
         return self.feature_name
 
+    def _log_bsm_events(self, events: dict):
+        any_events = any(len(v) for v in events.values())
+        if not any_events:
+            return
+
+        summary_parts = []
+        em_count = len(events["EMERGENCY_BRAKE"])
+        pre_count = len(events["PREEMPTIVE_SLOWDOWN"])
+        warn_count = len(events["WARN"])
+        if em_count:
+            summary_parts.append(f"EMG={em_count}")
+        if pre_count:
+            summary_parts.append(f"PRE={pre_count}")
+        if warn_count:
+            summary_parts.append(f"WARN={warn_count}")
+
+        latest_short = None
+        if events["EMERGENCY_BRAKE"]:
+            latest_short = events["EMERGENCY_BRAKE"][-1][1]
+        elif events["PREEMPTIVE_SLOWDOWN"]:
+            latest_short = events["PREEMPTIVE_SLOWDOWN"][-1][1]
+        elif events["WARN"]:
+            latest_short = events["WARN"][-1][1]
+
+        summary = f"[{self.feature_name}] | " + " ".join(summary_parts)
+        if latest_short:
+            summary += f" | {latest_short}"
+
+        terminal_display.update("BSM", summary)
+        terminal_display.render()
+
+        if not sys.stdout.isatty():
+            for typ in ("EMERGENCY_BRAKE", "PREEMPTIVE_SLOWDOWN", "WARN"):
+                for verbose, _ in events[typ]:
+                    logger.info(verbose)
+
     # O(n), utilizes get leader function from TRACI api, if there is no leader ahead of a car then it skips the checks for it
     # changes were made to differentiate between situations that trigger any sort of slowdown so that the logs are clearer
     def take_action(self, action):
@@ -61,10 +97,7 @@ class BSMFeature(BaseV2XFeature):
             return
 
         current_time_s = traci.simulation.getTime()
-
-        # Collect events this step to avoid spamming logs. For interactive
-        # terminals we print one concise updating line; for non-TTY we emit
-        # the original verbose INFO lines so logs remain complete.
+        
         events = {
             "EMERGENCY_BRAKE": [],
             "PREEMPTIVE_SLOWDOWN": [],
@@ -160,41 +193,8 @@ class BSMFeature(BaseV2XFeature):
 
                 self._last_brake_step[vehicle_id] = current_time_s
 
-        # Emit aggregated output: TTY -> single updating line; non-TTY -> verbose INFOs
-        any_events = any(len(v) for v in events.values())
-        if any_events:
-            # Update the shared terminal display so env line stays on top.
-            summary_parts = []
-            em_count = len(events["EMERGENCY_BRAKE"])
-            pre_count = len(events["PREEMPTIVE_SLOWDOWN"])
-            warn_count = len(events["WARN"])
-            if em_count:
-                summary_parts.append(f"EMG={em_count}")
-            if pre_count:
-                summary_parts.append(f"PRE={pre_count}")
-            if warn_count:
-                summary_parts.append(f"WARN={warn_count}")
-
-            latest_short = None
-            if events["EMERGENCY_BRAKE"]:
-                latest_short = events["EMERGENCY_BRAKE"][-1][1]
-            elif events["PREEMPTIVE_SLOWDOWN"]:
-                latest_short = events["PREEMPTIVE_SLOWDOWN"][-1][1]
-            elif events["WARN"]:
-                latest_short = events["WARN"][-1][1]
-
-            summary = f"[{self.feature_name}] | " + " ".join(summary_parts)
-            if latest_short:
-                summary += f" | {latest_short}"
-
-            terminal_display.update("BSM", summary)
-            terminal_display.render()
-
-            if not sys.stdout.isatty():
-                # Non-interactive: still emit verbose entries for full logs
-                for typ in ("EMERGENCY_BRAKE", "PREEMPTIVE_SLOWDOWN", "WARN"):
-                    for verbose, _ in events[typ]:
-                        logger.info(verbose)
+        # Emit aggregated output
+        self._log_bsm_events(events)
 
     def feature_reset(self):
         self._last_brake_step.clear()

@@ -174,18 +174,8 @@ class DynamicTLS(BaseV2XFeature):
         for tls_id in traci.trafficlight.getIDList():
             self.dynamic_tls(tls_id)
 
-        # after processing TLSs, emit compact summary for TTY or verbose logs otherwise
-        if self._tls_log_events:
-            if sys.stdout.isatty():
-                # counts and latest short message
-                tls_count = len(self._tls_log_events)
-                latest_short = self._tls_log_events[-1][1]
-                summary = f"[{self.feature_name}] | tls_log_events={tls_count} | {latest_short}"
-                terminal_display.update("TLS", summary)
-                terminal_display.render()
-            else:
-                for verbose, _ in self._tls_log_events:
-                    logger.info(verbose)
+        # Emit aggregated output
+        self._log_tls_events()
 
     def get_observation(self):
         dummy_obs = [0.1, 0.2, 0.3]  # dummy observation data
@@ -199,6 +189,21 @@ class DynamicTLS(BaseV2XFeature):
 
     def get_feature_name(self):
         return self.feature_name
+
+    def _log_tls_events(self):
+
+        if not self._tls_log_events:
+            return
+
+        if sys.stdout.isatty():
+            tls_count = len(self._tls_log_events)
+            latest_short = self._tls_log_events[-1][1]
+            summary = f"[{self.feature_name}] | tls_events={tls_count} | {latest_short}"
+            terminal_display.update("TLS", summary)
+            terminal_display.render()
+        else:
+            for verbose, _ in self._tls_log_events:
+                logger.info(verbose)
 
     def feature_step(self):
         # default behavior: don't spam the console for rule-based runs
