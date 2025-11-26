@@ -1,7 +1,8 @@
+import logging
 import os
 import sys
 class ProgressBar:
-    def __init__(self):
+    def __init__(self, logger: logging.Logger):
         self.total_trips = 0
         self.file_paths = []
         self.current = 0
@@ -11,6 +12,7 @@ class ProgressBar:
             'YELLOW': '\033[93m',
             'RESET': '\033[0m'
         }
+        self.logger = logger
 
     def load_trip_paths(self):
         for root, dirs, files in os.walk("config/", topdown=False):
@@ -47,6 +49,6 @@ class ProgressBar:
         filled_bar = f"{color}{'█' * filled_length}{self.progress_colors_ansi['RESET']}"
         empty_bar = '-' * (bar_length - filled_length)
         bar = filled_bar + empty_bar
-        print(f'\r|{bar}| {percent:.2f}%' + ' ' + info, end='\r', flush=True)
+        self.logger.info(f'\033[E\r|{bar}| {percent:.2f}%' + ' ' + info + "\033[F")
         if current_arrived_trips >= self.total_trips:
             print()
