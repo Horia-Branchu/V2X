@@ -119,9 +119,6 @@ class BaseSumoEnvironment(gym.Env):
             if traci.simulation.getMinExpectedNumber() == 0 or vehicle_count == 0:
                 terminal_display.finish()
                 logger.info("Simulation ended naturally.")
-            status = f"Time: {current_time:6.1f}s | Vehicles: {vehicle_count:3d}"
-            sys.stdout.write(f"\r{status}")
-            sys.stdout.flush()
         except Exception:
             # if traci not available or hasn't started yet, skip logging
             pass
