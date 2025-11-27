@@ -1,6 +1,5 @@
 import pandas as pd
-import traci
-import logging
+import libsumo as traci
 from pathlib import Path
 
 class DataCollector:
@@ -9,7 +8,7 @@ class DataCollector:
         self.out_dir = src_dir / "data"
         self.batch_size = batch_size
         self.buffer = []
-        # making the directory in a file named Data
+        # making the directory in a file named data
         self.out_dir.mkdir(parents=True, exist_ok=True)
         self.csv_path = self.out_dir / "vehicles.csv"
         # dict for feature engineering
@@ -56,9 +55,9 @@ class DataCollector:
             self.prev_accel[vid] = accel_now
             self.prev_time[vid] = time
 
-            # stops counter
             is_stopped_now = speed_now < 0.1
 
+            # stops counter
             if is_stopped_now and not self.was_stopped[vid]:
                 self.stops[vid] += 1
 

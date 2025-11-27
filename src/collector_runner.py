@@ -1,13 +1,11 @@
 import libsumo as traci
-from pathlib import Path
+import logging
 
+from pathlib import Path
 from simulation_runner import SimulationRunner
 from base_sumo_env import BaseSumoEnvironment
 from data_collector import DataCollector
-import logging
-from analysis import plots
-from analysis import correlation_map
-from analysis import geo_plots
+from analysis import plots, correlation_map, geo_plots
 
 logger = logging.getLogger("v2x")
 
@@ -23,7 +21,7 @@ class RunnerWithCollector(SimulationRunner):
         vehicle_count = traci.vehicle.getIDCount()
         logger.info(
             f"Time {current_time:.1f}s: Vehicles in simulation: {vehicle_count}"
-        )
+)
         self.collector.collect(current_time)
 
         try:
@@ -46,9 +44,7 @@ class RunnerWithCollector(SimulationRunner):
             self.env.step(0)
             current_time = traci.simulation.getTime()
             vehicle_count = traci.vehicle.getIDCount()
-            logger.info(
-                f"Step {step}: Time {current_time:.1f}s: Vehicles in simulation: {vehicle_count}"
-            )
+            logger.info(f"Step {step}: Time {current_time:.1f}s: Vehicles in simulation: {vehicle_count}")
             self.collector.collect(current_time)
         self.collector.flush()
 
@@ -148,9 +144,9 @@ def main():
 
     print("Running analysis plots")
 
-    plots.main()
-    correlation_map.generate_correlation_map()
-    geo_plots.main()
+    # plots.main()
+    # correlation_map.generate_correlation_map()
+    # geo_plots.main()
 
     print("All plots generated successfully.")
 

@@ -10,7 +10,7 @@ def find_latest_csv(root_dir: Path, filename="vehicles.csv"):
     candidates = list(root_dir.rglob(filename))
     if len(candidates) == 0:
         return None
-    ###Sorting files by the last modification time
+    #Sorting files by the last modification time
     candidates.sort(key=lambda f: f.stat().st_mtime, reverse=True)
     return candidates[0]
 
@@ -292,13 +292,13 @@ def main():
         df_baseline = pd.read_csv(baseline_path, low_memory=False)
         df_baseline["run"] = "baseline"
         df = pd.concat([df_baseline, df_v2x], ignore_index=True)
+        print(df["run"].value_counts())
         print(f"Using dataset: {csv_path} + baseline at {baseline_path}\n"
               f"Generating comparison plots (baseline vs v2x)...")
     else:
         df = df_v2x
         print(f"Using dataset: {csv_path}\n"
               f"(No vehicles_baseline.csv found, plotting single run.)")
-
     plot_accel_vs_co2(df, out_dir)
     plot_speed_vs_co2(df, out_dir)
     plot_co2_vs_jerk(df, out_dir)
