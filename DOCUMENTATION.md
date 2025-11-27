@@ -393,3 +393,152 @@ terminal_display.render()
 ```
 
 # Simulation Runner Class
+
+### Constructor
+```python
+def __init__(self, config_path, sumo_env, steps, **kwargs)
+```
+
+**Input:**
+- `config_path` (str): Path to SUMO configuration file
+- `sumo_env` (BaseSumoEnvironment or class): Pre-instantiated environment or environment class
+- `steps` (int, optional): Number of simulation steps to run
+- `**kwargs`: Additional keyword arguments passed to the environment
+
+**Output:** `None` (initializes object state)
+
+**What it does:** Sets up the simulation runner with either a provided environment instance or creates one from the config. Stores the step limit for later use in simulation execution.
+
+### run_manual_feature_test()
+
+**Input:** `None`
+
+**Output:** `None`
+
+**What it does:**
+- Logs which features are active
+- Resets the environment
+- Loops through simulation steps, taking random actions
+- Updates and renders display at each step
+- Automatically resets if episode terminates
+- Closes environment when done
+
+### test_specific_feature(feature_name)
+
+**Input:**
+- `feature_name` (str): Name of the feature to test in isolation
+
+**Output:** `None`
+
+**What it does:**
+- Logs isolated feature testing mode
+- Resets the environment
+- Steps through simulation with custom actions for the feature
+- Logs debug information per step
+- Handles episode resets
+- Closes environment when done
+
+### _get_feature_specific_action(feature_name, step)
+
+**Input:**
+- `feature_name` (str): Name of the feature being tested
+- `step` (int): Current simulation step number
+
+**Output:** Action compatible with the environment's action space
+
+**What it does:** Generates a feature-specific action for testing. Currently returns a random action from the action space; can be overridden for custom feature-specific logic.
+
+### run_until_end()
+
+**Input:** `None`
+
+**Output:** `None`
+
+**What it does:**
+- Steps through simulation until no more vehicles are expected
+- Updates terminal display with current time and vehicle count at each step
+- Handles FatalTraCIError exceptions gracefully
+- Calls `terminal_display.finish()` to clean up display when done
+- Logs completion message
+
+### run_with_steps()
+
+**Input:** `None`
+
+**Output:** `None`
+
+**What it does:**
+- Steps through exactly `self.simulation_steps` iterations
+- Updates terminal display with current time and vehicle count at each step
+- Exits loop after configured step count
+
+### start_simulation()
+
+**Input:** `None`
+
+**Output:** `None`
+
+**What it does:**
+- Resets the environment to initialize SUMO
+- Decides between `run_with_steps()` (if steps configured) or `run_until_end()` (if open-ended)
+- Closes the environment after execution completes
+
+### parse_arguments()
+
+**Input:** `None`
+
+**Output:** `argparse.Namespace` containing parsed command-line arguments
+
+**What it does:** Parses command-line arguments for:
+- `--steps`: Number of simulation steps
+- `--gui`: Enable SUMO GUI
+- `--bsm`: Enable Basic Safety Message feature
+- `--tls`: Enable Traffic Light System feature
+- `--priority`: Enable priority vehicle handling
+- `--reroute`: Enable dynamic rerouting
+- `--test-all`: Test all features with manual control
+
+### main()
+
+**Input:** `None` (reads from command-line arguments)
+
+**Output:** `None`
+
+**What it does:**
+1. Parses command-line arguments
+2. Constructs path to SUMO config file
+3. Creates BaseSumoEnvironment with enabled features
+4. Creates SimulationRunner instance
+5. Determines execution mode based on enabled features:
+   - `--test-all`: Run manual feature test mode
+   - Single feature enabled: Run isolated feature test
+   - Multiple features: Run manual feature test mode
+   - No features: Run standard simulation
+6. Executes the chosen simulation mode
+
+## Usage Examples
+
+**Run simulation without features for specified steps:**
+```bash
+python main.py --runner --steps 100
+```
+
+**Run simulation until vehicles are depleted with TLS enabled:**
+```bash
+python main.py --runner --tls
+```
+
+**Enable multiple features with GUI:**
+```bash
+python main.py --runner --bsm --tls --gui
+```
+
+**Test specific feature in isolation:**
+```bash
+python main.py --runner --bsm
+```
+
+**Test all features with manual control:**
+```bash
+python main.py --runner --test-all #(not to be used yest since not all features are implemented)
+```
