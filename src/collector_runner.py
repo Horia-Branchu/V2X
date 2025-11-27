@@ -17,7 +17,6 @@ class RunnerWithCollector(SimulationRunner):
         self.env.step(0)
         current_time = traci.simulation.getTime()
         vehicle_count = traci.vehicle.getIDCount()
-        logger.info(f"Time {current_time:.1f}s: Vehicles in simulation: {vehicle_count}")
         self.collector.collect(current_time)
 
         try:
@@ -25,10 +24,9 @@ class RunnerWithCollector(SimulationRunner):
                 self.env.step(0)
                 current_time = traci.simulation.getTime()
                 vehicle_count = traci.vehicle.getIDCount()
-                logger.info(f"Time {current_time:.1f}s: Vehicles in simulation: {vehicle_count}")
                 self.collector.collect(current_time)
 
-            logger.info("Simulation ended naturally.")
+            # collector flush/closing handled by caller or run_with_steps
 
         except traci.exceptions.FatalTraCIError as e:
             logger.error(f"Fatal TraCI error occurred. Ending simulation: {e}")
@@ -38,7 +36,6 @@ class RunnerWithCollector(SimulationRunner):
             self.env.step(0)
             current_time = traci.simulation.getTime()
             vehicle_count = traci.vehicle.getIDCount()
-            logger.info(f"Step {step}: Time {current_time:.1f}s: Vehicles in simulation: {vehicle_count}")
             self.collector.collect(current_time)
         self.collector.flush()
 

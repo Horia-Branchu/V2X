@@ -3,13 +3,17 @@
 import os
 import argparse
 import logging
+import sys
 import libsumo as traci
+
 from base_sumo_env import BaseSumoEnvironment
 from progress_bar import ProgressBar
+from terminal_display import terminal_display
+
 # use the project logger
 logger = logging.getLogger("v2x")
 if not logger.handlers:
-    handler = logging.StreamHandler()
+    handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(logging.Formatter('%(levelname)s: %(message)s'))
     logger.addHandler(handler)
 
@@ -106,21 +110,30 @@ class SimulationRunner:
 
     def run_until_end(self):
         """Run simulation until it naturally ends"""
-        traci.simulationStep()
-        """don't print anything here, only after the while, if you want to
-         display information while the status bar is running,
-          use the info parameter of progressbar.display() method."""
-        vehicle_count = traci.vehicle.getIDCount()
+
         try:
+            traci.simulationStep()
+
+
+            """don't print anything here, only after the while, if you want to
+             display information while the status bar is running,
+              use the info parameter of progressbar.display() method."""
+            vehicle_count = traci.vehicle.getIDCount()
+            current_time = traci.simulation.getTime()
             while (traci.simulation.getMinExpectedNumber() != 0 and vehicle_count != 0):
                 traci.simulationStep()
                 current_time = traci.simulation.getTime()
                 vehicle_count = traci.vehicle.getIDCount()
+
+                msg = f"Time {current_time:.1f}s: Vehicles: {vehicle_count}"
+                terminal_display.update("RUNNER", msg)
+                terminal_display.render()
+
+                terminal_display.finish()
                 # keep the original concise rule-based log line
-                info=f"Time {current_time:.1f}s: Vehicles in simulation: {vehicle_count}"
                 self.arrived_vehicles_until_current_step += traci.simulation.getArrivedNumber()
                 print(f"\r{current_time}", end='')
-                self.progress_bar.display(self.arrived_vehicles_until_current_step,info)
+                self.progress_bar.display(self.arrived_vehicles_until_current_step)
             """end the progress bar line, from here on, you can print normally"""
             logger.info("Simulation ended naturally.")
 
@@ -134,9 +147,13 @@ class SimulationRunner:
             traci.simulationStep()
             current_time = traci.simulation.getTime()
             vehicle_count = traci.vehicle.getIDCount()
-            info =f"Step {step}: Time {current_time:.1f}s: Vehicles in simulation: {vehicle_count}"
+
+            # single updating line for runner status
+            msg = f"Time {current_time:.1f}s: Vehicles: {vehicle_count}"
+            terminal_display.update("RUNNER", msg)
+            terminal_display.render()
             self.arrived_vehicles_until_current_step += traci.simulation.getArrivedNumber()
-            self.progress_bar.display(self.arrived_vehicles_until_current_step,info)
+            self.progress_bar.display(self.arrived_vehicles_until_current_step)
 
     def start_simulation(self):
         """Start the SUMO simulation with TraCI"""
