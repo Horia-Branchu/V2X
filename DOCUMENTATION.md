@@ -12,6 +12,7 @@
 │   ├── [base_sumo_env.py](#base-sumo-environment) <br>
 │   ├── [base_v2x_feature.py](#base-v2x-feature) <br>
 │   ├── [dynamic_tls.py](#dynamic-tls) <br>
+│   ├── [terminal_display.py](#terminal-display) <br>
 │   └── [simulation_runner.py](#simulation-runner-class) <br>
 
 
@@ -330,5 +331,65 @@ Executes a traffic-light update step.
 
 **What it does:**
 - Loops through all TLS systems and applies dynamic_tls() to each.
+
+# Terminal Display
+
+### Constructor
+```python
+def __init__(self, keys=None, logger_obj=None)
+```
+
+**Input:**
+- `keys` (list, optional): Initial list of display keys for tracking multiple output lines. (default: `[]`)
+- `logger_obj` (logging.Logger, optional): Logger instance for non-interactive output. (default: module-level logger)
+
+**Output:** `None` (initializes object state)
+
+**What it does:** Sets up the display manager with optional initial keys and logger. Initializes internal state tracking for values, logged output, and terminal initialization status.
+
+### update(key, text)
+
+**Input:**
+- `key` (str): Display key/identifier for a specific output line
+- `text` (str): The text to display for this key
+
+**Output:** `None`
+
+**What it does:** Updates the value for a given key. If the key doesn't exist, it's automatically added to the display. Stores the text for rendering on the next `render()` call.
+
+### render()
+
+**Input:** `None`
+
+**Output:** `None`
+
+**What it does:** 
+- **In TTY (interactive terminal):** Moves cursor up to overwrite previous lines in-place, creating a "live update" effect without scrolling
+- **In Non-TTY (piped output, file logging):** Emits only changed values as INFO log messages to avoid spam
+- On first call, initializes the display by printing all current lines
+- On subsequent calls, detects changes and updates accordingly
+
+### finish()
+
+**Input:** `None`
+
+**Output:** `None`
+
+**What it does:** Cleans up the interactive display by moving the cursor to the line after the last display line and printing a newline. Resets the initialization state for potential future reuse.
+
+### Module-Level Singleton
+
+```python
+terminal_display = TerminalDisplay(keys=["ENV"])
+```
+
+A module-level singleton instance is provided for global use across the application. Import and use directly:
+
+```python
+from terminal_display import terminal_display
+
+terminal_display.update("ENV", "Simulation running...")
+terminal_display.render()
+```
 
 # Simulation Runner Class
