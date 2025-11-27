@@ -1,14 +1,12 @@
 import libsumo as traci
-import logging
-
 from pathlib import Path
+
 from simulation_runner import SimulationRunner
 from base_sumo_env import BaseSumoEnvironment
 from data_collector import DataCollector
-from analysis import plots, correlation_map, geo_plots
+import logging
 
 logger = logging.getLogger("v2x")
-
 
 class RunnerWithCollector(SimulationRunner):
     def __init__(self, *args, collector, **kwargs):
@@ -19,9 +17,6 @@ class RunnerWithCollector(SimulationRunner):
         self.env.step(0)
         current_time = traci.simulation.getTime()
         vehicle_count = traci.vehicle.getIDCount()
-        logger.info(
-            f"Time {current_time:.1f}s: Vehicles in simulation: {vehicle_count}"
-)
         self.collector.collect(current_time)
 
         try:
@@ -29,12 +24,9 @@ class RunnerWithCollector(SimulationRunner):
                 self.env.step(0)
                 current_time = traci.simulation.getTime()
                 vehicle_count = traci.vehicle.getIDCount()
-                logger.info(
-                    f"Time {current_time:.1f}s: Vehicles in simulation: {vehicle_count}"
-                )
                 self.collector.collect(current_time)
 
-            logger.info("Simulation ended naturally.")
+            # collector flush/closing handled by caller or run_with_steps
 
         except traci.exceptions.FatalTraCIError as e:
             logger.error(f"Fatal TraCI error occurred. Ending simulation: {e}")
@@ -44,10 +36,8 @@ class RunnerWithCollector(SimulationRunner):
             self.env.step(0)
             current_time = traci.simulation.getTime()
             vehicle_count = traci.vehicle.getIDCount()
-            logger.info(f"Step {step}: Time {current_time:.1f}s: Vehicles in simulation: {vehicle_count}")
             self.collector.collect(current_time)
         self.collector.flush()
-
 
 def resolve_config():
     """Using the normal config if it exists at the normal path"""
@@ -56,10 +46,7 @@ def resolve_config():
     if parent_path.exists():
         return str(parent_path)
 
-    raise FileNotFoundError(
-        "No .sumocfg found. Pass --config or place simulation.sumocfg under ..\\config\\"
-    )
-
+    raise FileNotFoundError("No .sumocfg found. Pass --config or place simulation.sumocfg under ..\\config\\")
 
 def build_env(config_path, *, gui, bsm, tls, priority, reroute):
     """Create the same BaseSumoEnvironment"""
@@ -69,64 +56,33 @@ def build_env(config_path, *, gui, bsm, tls, priority, reroute):
         bsm=bsm,
         tls=tls,
         priority=priority,
-        reroute=reroute,
+        reroute=reroute
     )
-
 
 # typevar is important to be specified in this method
-def run_once(
-    config_path: str,
-    steps: int | None,
-    gui: bool,
-    bsm: bool,
-    tls: bool,
-    priority: bool,
-    reroute: bool,
-    collector: DataCollector,
-):
-    env = build_env(
-        config_path,
-        gui=gui,
-        bsm=bsm,
-        tls=tls,
-        priority=priority,
-        reroute=reroute,
-    )
-    runner = RunnerWithCollector(
-        config_path,
-        sumo_env=env,
-        steps=steps,
-        collector=collector,
-    )
+def run_once(config_path: str, steps: int | None, gui: bool,
+             bsm: bool, tls: bool, priority: bool, reroute: bool,
+             collector: DataCollector):
+    env = build_env(config_path, gui=gui, bsm=bsm, tls=tls, priority=priority, reroute=reroute)
+    runner = RunnerWithCollector(config_path, sumo_env=env, steps=steps, collector=collector)
     runner.start_simulation()
-
 
 def main():
     args = SimulationRunner.parse_arguments()
     cfg = resolve_config()
-
-    src_dir = Path(__file__).resolve().parent
-    csv_path = src_dir / "data" / "vehicles.csv"
-    baseline_path = src_dir / "data" / "vehicles_baseline.csv"
-
-    if baseline_path.exists():
-        raise RuntimeError(
-            f"Refusing to run: {baseline_path} already exists.\n"
-            "Move/rename/delete the existing baseline file before running collector_runner again."
-        )
 
     baseline_collector = DataCollector(batch_size=1000, reset_on_start=True)
     run_once(
         config_path=cfg,
         steps=args.steps,
         gui=args.gui,
-        bsm=False,
-        tls=False,
-        priority=False,
-        reroute=False,
-        collector=baseline_collector,
+        bsm=False, tls=False, priority=False, reroute=False,
+        collector=baseline_collector
     )
 
+    src_dir = Path(__file__).resolve().parent
+    csv_path = src_dir / "data" / "vehicles.csv"
+    baseline_path = src_dir / "data" / "vehicles_baseline.csv"
     if csv_path.exists():
         csv_path.rename(baseline_path)
 
@@ -135,21 +91,8 @@ def main():
         config_path=cfg,
         steps=args.steps,
         gui=args.gui,
-        bsm=args.bsm,
-        tls=args.tls,
-        priority=args.priority,
-        reroute=args.reroute,
-        collector=params_collector,
+        bsm=args.bsm, tls=args.tls, priority=args.priority, reroute=args.reroute,
+        collector=params_collector
     )
-
-    print("Running analysis plots")
-
-    # plots.main()
-    # correlation_map.generate_correlation_map()
-    # geo_plots.main()
-
-    print("All plots generated successfully.")
-
-
 if __name__ == "__main__":
     main()

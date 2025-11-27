@@ -7,8 +7,10 @@ import os
 def main():
     parser = argparse.ArgumentParser(description="Run simulation modules")
     group = parser.add_mutually_exclusive_group()
-    group.add_argument("--runner", action="store_true", help="Run simulation_runner")
-    group.add_argument("--collect", action="store_true", help="Run data_collector")
+    group.add_argument("--runner",      action="store_true", help="Run simulation_runner")
+    group.add_argument("--collect",     action="store_true", help="Run data_collector")
+    group.add_argument("--rl",          action="store_true", help="Run rl_trainee")
+    group.add_argument("--rltest",      action="store_true", help="Run rl_tester")
 
     args, remaining = parser.parse_known_args()
 
@@ -16,12 +18,18 @@ def main():
         cmd = "simulation_runner"
     elif args.collect:
         cmd = "collector_runner"
+    elif args.rl:
+        cmd = "rl_trainee"
+    elif args.rltest:
+        cmd = "rl_tester"
     else:
-        parser.error("Specify --runner / --collect")
+        parser.error("Specify --runner / --collect / --rl / --rltest")
 
     module_map = {
         "simulation_runner": "src.simulation_runner",
         "collector_runner": "src.collector_runner",
+        "rl_trainee": "src.rl_trainee",
+        "rl_tester": "src.rl_tester",
     }
 
     if cmd not in module_map:

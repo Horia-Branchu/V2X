@@ -1,6 +1,8 @@
 import gymnasium as gym
 import libsumo as traci
 import logging
+import sys
+from terminal_display import terminal_display
 import platform
 import subprocess
 import numpy as np
@@ -15,7 +17,7 @@ from bsm_feature import BSMFeature
 # use a named logger for the project; features can log at DEBUG for RL and INFO for rule-based
 logger = logging.getLogger("v2x")
 if not logger.handlers:
-    handler = logging.StreamHandler()
+    handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(logging.Formatter('%(levelname)s: %(message)s'))
     logger.addHandler(handler)
 
@@ -75,16 +77,12 @@ class BaseSumoEnvironment(gym.Env):
         except Exception:
             pass
 
-        # start SUMO with a CLI spinner to indicate progress while SUMO loads files
         stop_event = threading.Event()
-        spinner_thread = threading.Thread(target=self._startup_spinner, args=(stop_event,), daemon=True)
-        spinner_thread.start()
         try:
             traci.start(self.sumo_cmd)
         finally:
-            # always stop spinner whether start succeeded or raised
             stop_event.set()
-            spinner_thread.join()
+            
         self.current_step = 0
 
         for feature in self.features:
@@ -95,30 +93,7 @@ class BaseSumoEnvironment(gym.Env):
         observation = self._get_observation()
         info = self._get_info()
 
-        return observation, info
-
-    def _startup_spinner(self, stop_event):
-        """Simple CLI spinner shown while SUMO is starting.
-
-        Runs until stop_event is set. Keeps output minimal and compatible with
-        Windows PowerShell and typical terminals.
-        """
-        try:
-            for ch in itertools.cycle('|/-\\'):
-                if stop_event.is_set():
-                    break
-                sys.stdout.write(f"\rStarting SUMO... {ch}")
-                sys.stdout.flush()
-                time.sleep(0.12)
-        except Exception:
-            # don't crash startup on spinner errors
-            pass
-        finally:
-            try:
-                sys.stdout.write('\rSUMO startup complete.    \n')
-                sys.stdout.flush()
-            except Exception:
-                pass
+        return (observation, info)
 
     def step(self, action):
         # distribute action to features
@@ -132,7 +107,18 @@ class BaseSumoEnvironment(gym.Env):
         try:
             current_time = traci.simulation.getTime()
             vehicle_count = traci.vehicle.getIDCount()
-            logger.info(f"Time {current_time:.1f}s: Vehicles in simulation: {vehicle_count}")
+
+            msg = f"Time {current_time:.1f}s: Vehicles in simulation: {vehicle_count}"
+
+            # update the shared terminal display (TTY) or emit INFO (non-TTY)
+            terminal_display.update("ENV", msg)
+            terminal_display.render()
+
+            # If simulation has ended (no expected vehicles or no vehicles present),
+            # finalize the display and emit a final INFO.
+            if traci.simulation.getMinExpectedNumber() == 0 or vehicle_count == 0:
+                terminal_display.finish()
+                logger.info("Simulation ended naturally.")
         except Exception:
             # if traci not available or hasn't started yet, skip logging
             pass
@@ -164,17 +150,29 @@ class BaseSumoEnvironment(gym.Env):
     def _get_observation(self):
         """Combine observations from all features"""
         if not self.features:
-            return np.array([0])
+            return np.array([0], dtype=np.float32)  # Specify dtype
 
         obs_parts = []
         for feature in self.features:
             feature_obs = feature.get_observation()
             if isinstance(feature_obs, (list, np.ndarray)):
+                # Convert to float32 and flatten if needed
+                feature_obs = np.array(feature_obs, dtype=np.float32).flatten()
                 obs_parts.extend(feature_obs)
             else:
-                obs_parts.append(feature_obs)
+                # Convert scalar to float32
+                obs_parts.append(np.float32(feature_obs))
 
-        return np.array(obs_parts)
+        observation = np.array(obs_parts, dtype=np.float32)
+
+        # Ensure the shape matches your observation space
+        # If your observation space is (1,), make sure it has exactly 1 element
+        if observation.shape != (1,):
+            # Either reshape or handle accordingly
+            # If you need exactly 1 element, take the first one or aggregate
+            observation = np.array([observation[0]], dtype=np.float32)
+
+        return observation
 
     def _calculate_reward(self):
         """Combine rewards from all features"""
@@ -190,6 +188,15 @@ class BaseSumoEnvironment(gym.Env):
 
     def _is_terminated(self):
         """Override this for scenario-specific termination"""
+        try:
+            vehicle_count = traci.vehicle.getIDCount()
+            if vehicle_count == 0:
+                logger.info("Termination: No vehicles left in simulation")
+                return True
+        except Exception as my_ex:
+            logger.error(f"Exception caught at calling _is_terminated: {my_ex}")
+            pass
+
         return False
 
     # def _is_truncated(self):
