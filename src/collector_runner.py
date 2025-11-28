@@ -5,7 +5,7 @@ from pathlib import Path
 from simulation_runner import SimulationRunner
 from base_sumo_env import BaseSumoEnvironment
 from data_collector import DataCollector, vehicle_filename
-
+from analysis import correlation_map, geo_plots, plots
 
 logger = logging.getLogger("v2x")
 
@@ -95,5 +95,12 @@ def main():
         bsm=args.bsm, tls=args.tls, priority=args.priority, reroute=args.reroute,
         collector=params_collector
     )
+
+    print(f"\n\n\nGenerating Plots")
+    plots.main()
+    correlation_map.main()
+    geo_plots.main()
+    print(f"All plots generated successfully")
+
 if __name__ == "__main__":
     main()

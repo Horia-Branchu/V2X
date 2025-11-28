@@ -21,7 +21,7 @@ def find_latest_csv(root_dir: Path, filename=vehicle_filename):
     candidates.sort(key=lambda f: f.stat().st_mtime, reverse=True)
     return candidates[0]
 
-def generate_correlation_map():
+def main():
     """Generate a Pearson correlation heatmap without time and veh_id and save it"""
 
     project_root = Path(__file__).resolve().parents[1]
@@ -62,4 +62,4 @@ def generate_correlation_map():
 
 if __name__ == "__main__":
     print(__file__)
-    generate_correlation_map()
+    main()

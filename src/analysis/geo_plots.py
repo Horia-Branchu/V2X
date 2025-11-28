@@ -211,7 +211,7 @@ def compare_geo_plots(data_dir: Path):
     plt.savefig(out_path, dpi=180)
     plt.close()
 
-    print(f" Saved side-by-side comparison: {out_path}")
+    print(f"Saved side-by-side comparison: {out_path}")
 
 
 def main():
