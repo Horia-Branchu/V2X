@@ -82,7 +82,7 @@ class DataCollector:
             #calculate current average speed for this route
             route_avg_speed_now = self.route_speed_sum[route_id] / self.route_speed_count[route_id]
 
-            #update cumulative CO₂ emissions per vehicle
+            #update cumulative CO2 emissions per vehicle
             if vid in self.cumulative_co2:
                 self.cumulative_co2[vid] = self.cumulative_co2[vid] + co2_now
             else:

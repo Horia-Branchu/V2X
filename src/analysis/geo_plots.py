@@ -1,12 +1,12 @@
 import math
 import xml.etree.ElementTree as ET
-import pandas as pd
-import matplotlib.pyplot as plt
 import matplotlib as mpl
+import matplotlib.pyplot as plt
+import pandas as pd
 import sumolib
 
-from pathlib import Path
 from data_collector import vehicle_filename
+from pathlib import Path
 
 def find_latest(root_dir: Path, pattern: str):
     candidates = list(root_dir.rglob(pattern))
@@ -15,9 +15,11 @@ def find_latest(root_dir: Path, pattern: str):
     candidates.sort(key=lambda f: f.stat().st_mtime, reverse=True)
     return candidates[0]
 
+
 def find_latest_csv(root_dir: Path, filename=vehicle_filename):
     """Find latest CSV within the project (same behavior as plots.py)."""
     return find_latest(root_dir, filename)
+
 
 def find_latest_sumocfg(root_dir: Path, pattern="*.sumocfg"):
     """Find the most recently modified SUMO config."""
@@ -37,6 +39,7 @@ def _find_net_path_from_sumocfg(sumo_cfg_path: Path) -> Path:
         raise FileNotFoundError(f"Network file not found: {net_path}")
     return net_path
 
+
 def _net_bbox_from_shapes(net):
     """Compute bounding box from edge shapes."""
     xs, ys = [], []
@@ -45,14 +48,17 @@ def _net_bbox_from_shapes(net):
         if not shp:
             continue
         for x, y in shp:
-            xs.append(x); ys.append(y)
+            xs.append(x);
+            ys.append(y)
     if not xs:
         return (0, 0, 1000, 1000)
     return (min(xs), min(ys), max(xs), max(ys))
 
+
 def _is_real_edge(edge):
     """Ignore internal edges like ':cluster_0'."""
     return not edge.getID().startswith(':')
+
 
 def compute_edge_min_speed(df: pd.DataFrame):
     """Compute minimum speed and sample count per edge."""
@@ -71,16 +77,16 @@ def compute_edge_min_speed(df: pd.DataFrame):
 
 
 def plot_min_speed_map(
-    df: pd.DataFrame,
-    sumo_config: Path,
-    out_path: Path,
-    background_path: Path | None = None,
-    cmap_name: str = "viridis",
-    linewidth_base: float = 1.6,
-    linewidth_by_hits: bool = True,
-    hits_scale: float = 0.45,
-    top_n_labels: int = 0,
-    title: str = "Minimum speed per edge (geographic)"
+        df: pd.DataFrame,
+        sumo_config: Path,
+        out_path: Path,
+        background_path: Path | None = None,
+        cmap_name: str = "viridis",
+        linewidth_base: float = 1.6,
+        linewidth_by_hits: bool = True,
+        hits_scale: float = 0.45,
+        top_n_labels: int = 0,
+        title: str = "Minimum speed per edge (geographic)"
 ):
     """Draw the SUMO network colored by per-edge minimum speed."""
     stats = compute_edge_min_speed(df)
@@ -95,7 +101,7 @@ def plot_min_speed_map(
     net = sumolib.net.readNet(str(net_path))
     xmin, ymin, xmax, ymax = _net_bbox_from_shapes(net)
 
-    vmin,vmax = 2,20
+    vmin, vmax = 2, 20
     cmap = mpl.colormaps.get_cmap(cmap_name)  # modern API
     norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
 
@@ -142,9 +148,11 @@ def plot_min_speed_map(
             ax.text(x, y, f"{eid}\n{val:.1f} m/s", fontsize=8,
                     ha="center", va="center")
 
-    ax.set_xlim([xmin, xmax]); ax.set_ylim([ymin, ymax])
+    ax.set_xlim([xmin, xmax]);
+    ax.set_ylim([ymin, ymax])
     ax.set_aspect("equal", adjustable="box")
-    ax.set_xticks([]); ax.set_yticks([])
+    ax.set_xticks([]);
+    ax.set_yticks([])
     ax.set_title(title)
     plt.tight_layout()
 
@@ -153,6 +161,7 @@ def plot_min_speed_map(
     plt.savefig(out_path, dpi=180)
     plt.close(fig)
     print(f" Saved geographic plot to: {out_path}")
+
 
 def generate_geo_plot(csv_path: Path, sumo_cfg_path: Path, output_name: str):
     """load CSV and generate a geographic min-speed plot."""
@@ -166,15 +175,16 @@ def generate_geo_plot(csv_path: Path, sumo_cfg_path: Path, output_name: str):
         out_path=out_path,
         background_path=None,
         top_n_labels=0,
-        title=f"Minimum Speed Map – {output_name.replace('.png','')}"
+        title=f"Minimum Speed Map – {output_name.replace('.png', '')}"
     )
+
 
 def compare_geo_plots(data_dir: Path):
     """Create a side-by-side comparison image of baseline vs V2X."""
     import matplotlib.image as mpimg
 
     baseline_img = data_dir / "min_speed_baseline.png"
-    v2x_img      = data_dir / "min_speed_V2X.png"
+    v2x_img = data_dir / "min_speed_V2X.png"
 
     if not baseline_img.exists() or not v2x_img.exists():
         print("Skipping comparison: one of the images does not exist.")
@@ -199,6 +209,7 @@ def compare_geo_plots(data_dir: Path):
     plt.close()
 
     print(f" Saved side-by-side comparison: {out_path}")
+
 
 def main():
     src_root = Path(__file__).resolve().parents[1]
@@ -236,6 +247,7 @@ def main():
             print(f"Failed to generate comparison image: {e}")
 
     print("All geo plots finished.")
+
 
 if __name__ == "__main__":
     main()
