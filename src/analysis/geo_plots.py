@@ -4,9 +4,12 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 import pandas as pd
 import sumolib
+import logging
 
 from data_collector import vehicle_filename
 from pathlib import Path
+
+logger = logging.getLogger("v2x")
 
 def find_latest(root_dir: Path, pattern: str):
     candidates = list(root_dir.rglob(pattern))
@@ -51,7 +54,7 @@ def _net_bbox_from_shapes(net):
             xs.append(x);
             ys.append(y)
     if not xs:
-        return (0, 0, 1000, 1000)
+        raise ValueError("Network dataset has no valid edge shapes for plotting.")
     return (min(xs), min(ys), max(xs), max(ys))
 
 
@@ -102,7 +105,7 @@ def plot_min_speed_map(
     xmin, ymin, xmax, ymax = _net_bbox_from_shapes(net)
 
     vmin, vmax = 2, 20
-    cmap = mpl.colormaps.get_cmap(cmap_name)  # modern API
+    cmap = mpl.colormaps.get_cmap(cmap_name)
     norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
 
     fig, ax = plt.subplots(figsize=(12, 10))
@@ -160,7 +163,7 @@ def plot_min_speed_map(
     out_path.parent.mkdir(parents=True, exist_ok=True)
     plt.savefig(out_path, dpi=180)
     plt.close(fig)
-    print(f" Saved geographic plot to: {out_path}")
+    logger.info(f"Saved geographic plot to: {out_path}")
 
 
 def generate_geo_plot(csv_path: Path, sumo_cfg_path: Path, output_name: str):
@@ -220,7 +223,9 @@ def main():
     params_path = data_dir / vehicle_filename
     baseline_path = data_dir / f"{Path(vehicle_filename).stem}_baseline.csv"
 
-    sumo_cfg_path = find_latest_sumocfg(project_root / "config", "*.sumocfg")
+    sumo_cfg_path = project_root / "config" / "simulation.sumocfg"
+    if not sumo_cfg_path.exists():
+        raise FileNotFoundError(f"Expected config file not found: {sumo_cfg_path}")
     if not sumo_cfg_path:
         print("ERROR: No .sumocfg found.")
         return
