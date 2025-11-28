@@ -2,9 +2,12 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-from pathlib import Path
 
-def find_latest_csv(root_dir: Path, filename="vehicles.csv"):
+from pathlib import Path
+from data_collector import vehicle_filename
+
+
+def find_latest_csv(root_dir: Path, filename=vehicle_filename):
     """Search for the newest matching CSV in the project folder"""
 
     print(f"Correlation Map for {root_dir}\n"
@@ -22,10 +25,10 @@ def generate_correlation_map():
     """Generate a Pearson correlation heatmap without time and veh_id and save it"""
 
     project_root = Path(__file__).resolve().parents[1]
-    csv_path = find_latest_csv(project_root, "vehicles.csv")
+    csv_path = find_latest_csv(project_root, vehicle_filename)
 
     if not csv_path or not csv_path.exists():
-        print(f"Could not find any vehicles.csv file in the project"
+        print(f"Could not find any {vehicle_filename} in the project"
               "Run the simulation first so DataCollector generates it")
         return None
 

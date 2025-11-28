@@ -1,11 +1,12 @@
-from pathlib import Path
 import math
 import xml.etree.ElementTree as ET
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib as mpl
-
 import sumolib
+
+from pathlib import Path
+from data_collector import vehicle_filename
 
 def find_latest(root_dir: Path, pattern: str):
     candidates = list(root_dir.rglob(pattern))
@@ -14,8 +15,8 @@ def find_latest(root_dir: Path, pattern: str):
     candidates.sort(key=lambda f: f.stat().st_mtime, reverse=True)
     return candidates[0]
 
-def find_latest_csv(root_dir: Path, filename="vehicles.csv"):
-    """Find latest vehicles.csv within the project (same behavior as plots.py)."""
+def find_latest_csv(root_dir: Path, filename=vehicle_filename):
+    """Find latest CSV within the project (same behavior as plots.py)."""
     return find_latest(root_dir, filename)
 
 def find_latest_sumocfg(root_dir: Path, pattern="*.sumocfg"):
@@ -94,10 +95,7 @@ def plot_min_speed_map(
     net = sumolib.net.readNet(str(net_path))
     xmin, ymin, xmax, ymax = _net_bbox_from_shapes(net)
 
-    vals = list(metric_by_edge.values())
-    vmin, vmax = min(vals), max(vals)
-    if math.isclose(vmin, vmax):
-        vmin = 0.0
+    vmin,vmax = 2,20
     cmap = mpl.colormaps.get_cmap(cmap_name)  # modern API
     norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
 
@@ -208,8 +206,8 @@ def main():
 
     data_dir = src_root / "data"
 
-    params_path = data_dir / "vehicles.csv"
-    baseline_path = data_dir / "vehicles_baseline.csv"
+    params_path = data_dir / vehicle_filename
+    baseline_path = data_dir / f"{Path(vehicle_filename).stem}_baseline.csv"
 
     sumo_cfg_path = find_latest_sumocfg(project_root / "config", "*.sumocfg")
     if not sumo_cfg_path:
@@ -223,13 +221,13 @@ def main():
         print("Generating geographic plot for V2X run...")
         generate_geo_plot(params_path, sumo_cfg_path, "min_speed_V2X.png")
     else:
-        print("No vehicles.csv found — skipping V2X plot")
+        print("No {vehicle_filename} — skipping V2X plot")
 
     if baseline_path.exists():
         print("Generating geographic plot for BASELINE run...")
         generate_geo_plot(baseline_path, sumo_cfg_path, "min_speed_baseline.png")
     else:
-        print("No vehicles_baseline.csv found — skipping baseline plot")
+        print(f"No {Path(vehicle_filename).stem}_baseline.csv found — skipping baseline plot")
 
     if params_path.exists() and baseline_path.exists():
         try:

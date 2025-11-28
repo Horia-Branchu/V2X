@@ -2,6 +2,9 @@ import pandas as pd
 import libsumo as traci
 from pathlib import Path
 
+# global definition
+vehicle_filename = "v2v.csv"
+
 class DataCollector:
     def __init__(self, batch_size=1000, reset_on_start=True):
         src_dir = Path(__file__).resolve().parent
@@ -10,7 +13,7 @@ class DataCollector:
         self.buffer = []
         # making the directory in a file named data
         self.out_dir.mkdir(parents=True, exist_ok=True)
-        self.csv_path = self.out_dir / "vehicles.csv"
+        self.csv_path = self.out_dir / vehicle_filename
         # dict for feature engineering
         self.cumulative_co2 = {}
         self.prev_accel = {}
@@ -56,31 +59,30 @@ class DataCollector:
             self.prev_time[vid] = time
 
             is_stopped_now = speed_now < 0.1
-
-            # stops counter
+            #count stop event only when transitioning from moving
             if is_stopped_now and not self.was_stopped[vid]:
                 self.stops[vid] += 1
-
             self.was_stopped[vid] = is_stopped_now
 
             trip_time_now = time - self.start_time[vid]
             distance_now = traci.vehicle.getDistance(vid)
 
-            # average speed per route_id
+            #update average route speed based on current vehicle
             route_id = traci.vehicle.getRouteID(vid)
+            #sum up speed values for this route
             if route_id in self.route_speed_sum:
                 self.route_speed_sum[route_id] += speed_now
             else:
                 self.route_speed_sum[route_id] = speed_now
-            #no of route id
+            #track number of speed samples recorded for this route
             if route_id in self.route_speed_count:
                 self.route_speed_count[route_id] += 1
             else:
                 self.route_speed_count[route_id] = 1
-            #Average speed per route
+            #calculate current average speed for this route
             route_avg_speed_now = self.route_speed_sum[route_id] / self.route_speed_count[route_id]
 
-            #calculating co2 per vehicle
+            #update cumulative CO₂ emissions per vehicle
             if vid in self.cumulative_co2:
                 self.cumulative_co2[vid] = self.cumulative_co2[vid] + co2_now
             else:

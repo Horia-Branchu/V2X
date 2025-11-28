@@ -1,10 +1,11 @@
 import libsumo as traci
-from pathlib import Path
+import logging
 
+from pathlib import Path
 from simulation_runner import SimulationRunner
 from base_sumo_env import BaseSumoEnvironment
-from data_collector import DataCollector
-import logging
+from data_collector import DataCollector, vehicle_filename
+
 
 logger = logging.getLogger("v2x")
 
@@ -81,8 +82,8 @@ def main():
     )
 
     src_dir = Path(__file__).resolve().parent
-    csv_path = src_dir / "data" / "vehicles.csv"
-    baseline_path = src_dir / "data" / "vehicles_baseline.csv"
+    csv_path = src_dir / "data" / vehicle_filename
+    baseline_path = src_dir / "data" / f"{Path(vehicle_filename).stem}_baseline.csv"
     if csv_path.exists():
         csv_path.rename(baseline_path)
 
