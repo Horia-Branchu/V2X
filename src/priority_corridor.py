@@ -14,9 +14,9 @@ YIELD_DURATION_STEPS: int = 6           # seconds to keep lane change order
 # Safety limits
 MIN_SPEED_AFTER_SLOWDOWN: float = 0.0   # allow full stop
 MAX_BULK_COMMANDS_PER_STEP: int = 50   # avoid sending too many TraCI cmds
-PRIORITY_TYPES = "emergency"
+PRIORITY_TYPE = "emergency"
 
-def _euclid2(p1, p2) -> float:
+def squared_distance(p1, p2) -> float:
     # Fast squared distance (avoids slow sqrt); used to check proximity
     dx = p1[0] - p2[0]
     dy = p1[1] - p2[1]
@@ -28,9 +28,8 @@ class PriorityCorridorFeature(BaseV2XFeature):
         self.feature_name = feature_name
         self.observation_size = 3  # dummy observation size
         self.action_size = 2
-        # internal caches
-        self._known_priority_ids: set[str] = set()  # discovered emergency vehicles
-        self._yielded: set[str] = set()             # vehicles that already yielded
+        self._emergency_vehicle_ids: set[str] = set()
+        self._vehicles_that_yielded: set[str] = set()
     def get_observation_space(self):
         return gym.spaces.Box(low=0, high=1, shape=(self.observation_size,))
 
@@ -42,6 +41,37 @@ class PriorityCorridorFeature(BaseV2XFeature):
 
     def calculate_reward(self):
         return 0.0
+
+    def _cache_positions_and_detect_emergencies(self, vehicle_ids):
+        """
+        Cache vehicle positions, cached edges, lane groups, and update emergency list.
+        """
+        # First cache positions/edges and discover emergencies only once
+        positions: dict[str, tuple[float, float]] = {}
+        edges: dict[str, str] = {}
+        edge_to_vehicle_ids: dict[str, list[str]] = defaultdict(list)
+
+        for vehicle_id in vehicle_ids:
+            try:
+                positions[vehicle_id] = traci.vehicle.getPosition(vehicle_id)
+                edge_id = traci.vehicle.getRoadID(vehicle_id)
+                edges[vehicle_id] = edge_id
+                edge_to_vehicle_ids[edge_id].append(vehicle_id)
+
+                # discover emergency vehicles only once
+                if vehicle_id not in self._emergency_vehicle_ids:
+                    if traci.vehicle.getTypeID(vehicle_id) == PRIORITY_TYPE:
+                        self._emergency_vehicle_ids.add(vehicle_id)
+
+            except Exception as e:
+                logger.error(
+                    "[%s] TraCIException while caching vehicle %s: %s",
+                    self.feature_name,
+                    vehicle_id,
+                    e,
+                )
+
+        return positions, edges, edge_to_vehicle_ids
 
     def take_action(self, action) -> None:
         if not self.enable:
@@ -57,30 +87,10 @@ class PriorityCorridorFeature(BaseV2XFeature):
             return
         if not vehicle_ids:
             return
-        #First cache positions/edges and discover emergencies only once
-        positions: dict[str, tuple[float, float]] = {}
-        edges: dict[str, str] = {}
-        edge_to_vehicle_ids: dict[str, list[str]] = defaultdict(list)
-        for vehicle_id in vehicle_ids:
-            try:
-                positions[vehicle_id] = traci.vehicle.getPosition(vehicle_id)
-                edge_id = traci.vehicle.getRoadID(vehicle_id)
-                edges[vehicle_id] = edge_id
-                edge_to_vehicle_ids[edge_id].append(vehicle_id)
 
-                # discover new emergency vehicles only once
-                if vehicle_id not in self._known_priority_ids:
-                    if traci.vehicle.getTypeID(vehicle_id) == PRIORITY_TYPES:
-                        self._known_priority_ids.add(vehicle_id)
-            except Exception as e:
-                logger.error(
-                    "[%s] TraCIException while caching vehicle %s: %s",
-                    self.feature_name,
-                    vehicle_id,
-                    e,
-                )
-                continue
-        priority_ids = [vid for vid in self._known_priority_ids if vid in positions]
+        positions, edges, edge_to_vehicle_ids = self._cache_positions_and_detect_emergencies(vehicle_ids)
+        priority_ids = [vid for vid in self._emergency_vehicle_ids if vid in positions]
+
         if not priority_ids:
             return
         cmds_sent = 0
@@ -93,7 +103,6 @@ class PriorityCorridorFeature(BaseV2XFeature):
             priority_edge_id = edges[priority_id]
             priority_pos = positions[priority_id]
 
-            # lane index and lane count for this edge
             try:
                 emergency_lane_index = traci.vehicle.getLaneIndex(priority_id)
                 lane_count = traci.edge.getLaneNumber(priority_edge_id)
@@ -108,16 +117,19 @@ class PriorityCorridorFeature(BaseV2XFeature):
                 continue
 
             for vehicle_id in edge_to_vehicle_ids.get(priority_edge_id, ()):
-                if (
+                # Skip vehicles that should not yield:
+                should_skip_vehicle = (
                         vehicle_id == priority_id
-                        or vehicle_id in self._known_priority_ids
-                        or vehicle_id in self._yielded
+                        or vehicle_id in self._emergency_vehicle_ids
+                        or vehicle_id in self._vehicles_that_yielded
                         or vehicle_id not in positions
-                ):
+                )
+
+                if should_skip_vehicle:
                     continue
 
-                # Distance gate
-                dist_sq = _euclid2(positions[vehicle_id], priority_pos)
+                # Distance gate: if too far from emergency, skip.
+                dist_sq = squared_distance(positions[vehicle_id], priority_pos)
                 if dist_sq > trigger_distance_sq:
                     continue
 
@@ -150,8 +162,7 @@ class PriorityCorridorFeature(BaseV2XFeature):
                     traci.vehicle.setSpeedMode(vehicle_id, 0)
                     traci.vehicle.setSpeed(vehicle_id, new_speed)
 
-                    # remember that this vehicle already yielded
-                    self._yielded.add(vehicle_id)
+                    self._vehicles_that_yielded.add(vehicle_id)
 
                     logger.info(
                         f"[{self.feature_name}] YIELD: {vehicle_id} -> lane {target_lane_index} "
