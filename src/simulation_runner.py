@@ -37,16 +37,17 @@ class SimulationRunner:
         logger.info("------ Feature testing mode ------")
         logger.info(f"active features: {[f.get_feature_name() for f in self.env.features]}")
 
-        obs, _ = self.env.reset()
+        self.env.reset()
 
         def simulation_logic(current_step):
             action = self.env.action_space.sample()
 
             # step the environment
-            obs, reward, terminated, truncated, info = self.env.step(action)
+            self.env._take_action(action)
+            traci.simulationStep()
 
-            if terminated or truncated:
-                obs, _ = self.env.reset()
+            if self.env._is_terminated():
+                # obs, _ = self.env.reset()
                 logger.info(f"------ simulation reseted at step {current_step} ------")
 
         if self.simulation_steps is not None:
@@ -63,18 +64,20 @@ class SimulationRunner:
     def test_specific_feature(self, feature_name):
         """Test a specific feature in isolation"""
         logger.info(f"------ Isolated feature testing: {feature_name} ------")
-        obs, _ = self.env.reset()
+
+        self.env.reset()
 
         def simulation_logic(current_step):
             # custom action logic for specific feature testing
             action = self._get_feature_specific_action(feature_name, current_step)
 
-            obs, reward, terminated, truncated, info = self.env.step(action)
+            self.env._take_action(action)
+            traci.simulationStep()
 
             # per-step feature test message — verbose (use DEBUG so rule-based runs don't get spammed)
             logger.debug(f"Step {current_step}: {feature_name}")
 
-            if terminated or truncated:
+            if self.env._is_terminated():
                 return -1
 
         if self.simulation_steps is not None:
