@@ -39,16 +39,18 @@ class ProgressBar:
             return self.progress_colors_ansi['YELLOW']
         else:
             return self.progress_colors_ansi['GREEN']
-
-    def display(self, current_arrived_trips: int=0, info: str = ''):
+    def display_string(self, current: int=0, end: int = 1, info='', steps: bool = False):
+        if steps:
+            return self.display_string_bar(current, end, info=f"Steps: {current}/{end} {info}")
+        else:
+            return self.display_string_bar(current, self.total_trips, info=f"Arrived vehicles: {current}/{self.total_trips} {info}")
+    def display_string_bar(self, current: int=0, end=1, info: str = ''):
         sys.stdout.write('\033[K') #clear to end of line (prevents artifact characters)
-        percent = (current_arrived_trips / self.total_trips) * 100
+        percent = (current / end) * 100
         color = self.return_progress_color(percent)
         bar_length = 50
-        filled_length = int(bar_length * current_arrived_trips // self.total_trips)
+        filled_length = int(bar_length * current // end)
         filled_bar = f"{color}{'█' * filled_length}{self.progress_colors_ansi['RESET']}"
         empty_bar = '-' * (bar_length - filled_length)
         bar = filled_bar + empty_bar
-        self.logger.info(f'\033[E\r|{bar}| {percent:.2f}%' + ' ' + info + "\033[F")
-        if current_arrived_trips >= self.total_trips:
-            print()
+        return f'|{bar}| {percent:.2f}%' + ' ' + info

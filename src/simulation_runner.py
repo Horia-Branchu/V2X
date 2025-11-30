@@ -56,17 +56,26 @@ class SimulationRunner:
 
         if self.simulation_steps is not None:
             for current_step in range(self.simulation_steps):
-                self.arrived_vehicles_until_current_step += traci.simulation.getArrivedNumber()
-                self.progress_bar.display(self.arrived_vehicles_until_current_step)
+                terminal_display.update("PROGRESSBAR",
+                                        self.progress_bar.display_string(current = current_step+1, end = self.simulation_steps,steps = True))
+                terminal_display.render()
                 simulation_logic(current_step)
+            terminal_display.finish()
+
         else:
             current_step = 0
-            while (traci.simulation.getMinExpectedNumber() != 0):
+            while traci.simulation.getMinExpectedNumber() != 0:
                 self.arrived_vehicles_until_current_step += traci.simulation.getArrivedNumber()
-                self.progress_bar.display(self.arrived_vehicles_until_current_step)
+                terminal_display.update("PROGRESSBAR",
+                                        self.progress_bar.display_string(self.arrived_vehicles_until_current_step))
+                terminal_display.render()
                 simulation_logic(current_step)
                 current_step += 1
-
+            terminal_display.update("PROGRESSBAR",
+                                    self.progress_bar.display_string(self.arrived_vehicles_until_current_step))
+            terminal_display.render()
+            self.arrived_vehicles_until_current_step = 0
+            terminal_display.finish()
         self.env.close()
 
     def test_specific_feature(self, feature_name):
@@ -88,18 +97,29 @@ class SimulationRunner:
 
         if self.simulation_steps is not None:
             for current_step in range(self.simulation_steps):
-                self.arrived_vehicles_until_current_step += traci.simulation.getArrivedNumber()
-                self.progress_bar.display(self.arrived_vehicles_until_current_step)
+                terminal_display.update("PROGRESSBAR",
+                                        self.progress_bar.display_string(current=current_step+1,
+                                                                         end=self.simulation_steps, steps=True))
+                terminal_display.render()
                 if simulation_logic(current_step) == -1:
                     break
+            terminal_display.finish()
         else:
             current_step = 0
-            while (traci.simulation.getMinExpectedNumber() != 0):
+            while traci.simulation.getMinExpectedNumber() != 0:
                 self.arrived_vehicles_until_current_step += traci.simulation.getArrivedNumber()
-                self.progress_bar.display(self.arrived_vehicles_until_current_step)
+                terminal_display.update("PROGRESSBAR",
+                                        self.progress_bar.display_string(self.arrived_vehicles_until_current_step))
+                terminal_display.render()
                 if simulation_logic(current_step) == -1:
                     break
                 current_step += 1
+            self.arrived_vehicles_until_current_step += traci.simulation.getArrivedNumber()
+            terminal_display.update("PROGRESSBAR",
+                                    self.progress_bar.display_string(self.arrived_vehicles_until_current_step))
+            terminal_display.render()
+            self.arrived_vehicles_until_current_step = 0
+            terminal_display.finish()
 
 
         self.env.close()
@@ -113,28 +133,21 @@ class SimulationRunner:
 
         try:
             traci.simulationStep()
-
-
-            """don't print anything here, only after the while, if you want to
-             display information while the status bar is running,
-              use the info parameter of progressbar.display() method."""
             vehicle_count = traci.vehicle.getIDCount()
             current_time = traci.simulation.getTime()
-            while (traci.simulation.getMinExpectedNumber() != 0 and vehicle_count != 0):
+            while traci.simulation.getMinExpectedNumber() != 0 and vehicle_count != 0:
                 traci.simulationStep()
                 current_time = traci.simulation.getTime()
                 vehicle_count = traci.vehicle.getIDCount()
 
                 msg = f"Time {current_time:.1f}s: Vehicles: {vehicle_count}"
                 terminal_display.update("RUNNER", msg)
-                terminal_display.render()
-
-                terminal_display.finish()
-                # keep the original concise rule-based log line
                 self.arrived_vehicles_until_current_step += traci.simulation.getArrivedNumber()
-                print(f"\r{current_time}", end='')
-                self.progress_bar.display(self.arrived_vehicles_until_current_step)
-            """end the progress bar line, from here on, you can print normally"""
+                terminal_display.update("PROGRESSBAR",
+                                        self.progress_bar.display_string(self.arrived_vehicles_until_current_step))
+                terminal_display.render()
+            self.arrived_vehicles_until_current_step = 0
+            terminal_display.finish()
             logger.info("Simulation ended naturally.")
 
         except traci.exceptions.FatalTraCIError as e:
@@ -152,8 +165,11 @@ class SimulationRunner:
             msg = f"Time {current_time:.1f}s: Vehicles: {vehicle_count}"
             terminal_display.update("RUNNER", msg)
             terminal_display.render()
-            self.arrived_vehicles_until_current_step += traci.simulation.getArrivedNumber()
-            self.progress_bar.display(self.arrived_vehicles_until_current_step)
+            terminal_display.update("PROGRESSBAR",
+                                    self.progress_bar.display_string(current=step+1, end=self.simulation_steps,
+                                                                     steps=True))
+            terminal_display.render()
+        terminal_display.finish()
 
     def start_simulation(self):
         """Start the SUMO simulation with TraCI"""
