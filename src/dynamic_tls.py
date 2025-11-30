@@ -15,15 +15,17 @@ class DynamicTLS(BaseV2XFeature):
     def __init__(self, feature_name="DynamicTLS", enabled=True):
         super().__init__(enabled)
         self.feature_name = feature_name
-        self.observation_size = 3       # dummy observation size
+        self.observation_size = 5       # dummy observation size
         self.action_size = 4            # dummy action size
         self.detection_range = 50       # meters
         self.extend_time = 5            # seconds
         self.tls_override_times = {}    # {tls_id: timestamp}
         self._tls_log_events = [] # per-step event buffer for compact TTY display or verbose non-TTY logs
+        self.phase_time = 0
+    
     def get_observation_space(self):
-        return gym.spaces.Box(low=0, high=1, shape=(self.observation_size,))
-
+        return gym.spaces.Box(low=0, high=1, shape=(1,), dtype=np.float32)
+    
     def get_action_space(self):
         return gym.spaces.Discrete(self.action_size)
 
@@ -168,38 +170,131 @@ class DynamicTLS(BaseV2XFeature):
         return
     
     def take_action(self, action):
-        # clear per-step buffer
-        self._tls_log_events.clear()
+        #tls_list = traci.trafficlight.getIDList()
+#
+        #if isinstance(action, (int, float)):
+        #    action = [int(action)]
+        #elif isinstance(action, (list, np.ndarray)):
+        #    action = [int(a) for a in action]
+        #else:
+        #    raise ValueError(f"Unexpected action type: {type(action)}")
+        #
+        #if len(action) != len(tls_list):
+        #    action = [action[0]] * len(tls_list)
+#
+        #for idx,tls in enumerate(tls_list):
+        #    act = action[idx]
+        #    phase = traci.trafficlight.getPhase(tls)
+        #    phase_state = traci.trafficlight.getRedYellowGreenState(tls)
+        #    total_phases = len(phase_state)  
+        #    phase_duration = traci.trafficlight.getPhaseDuration(tls)
+#
+        #    if act ==0:
+        #        pass
+        #    elif act ==1:
+        #        traci.trafficlight.setPhaseDuration(tls, phase_duration + self.extend_time)
+        #        self.spat_message_log(f"Extending GREEN for TLS {tls} by {self.extend_time}s per RL action")
+#
+        #    elif act ==2:
+        #        next_phae = (phase +1) % total_phases
+        #        traci.trafficlight.setPhase(tls,next_phae)
+        #        self.spat_message_log(f"Switching TLS {tls} to next phase {next_phae} per RL action")
+#
+        #    elif act ==3:
+        #        new_state= 'GGrr'
+        #        traci.trafficlight.setRedYellowGreenState(tls,new_state)
+        #        self.spat_message_log(f"Setting TLS {tls} to GREEN state per RL action")
+#
+        #    elif act ==4:
+        #        new_state= 'rrGG'
+        #        traci.trafficlight.setRedYellowGreenState(tls,new_state)
+        #        self.spat_message_log(f"Setting TLS {tls} to GREEN state per RL action")
 
-        """
-        Action mapping:
-        0 - Extend NS
-        1 - Extend EW
-        2 - Switch phase
-        3 - Maintain
-        """
-
-        for tls_id in traci.trafficlight.getIDList():
-            phase = traci.trafficlight.getPhase(tls_id)
-            phase_duration = traci.trafficlight.getPhaseDuration(tls_id)
-
-            if action == 0:
-                if phase %2 == 0:  # NS green
+        if isinstance(action, np.ndarray):
+            if action.shape == ():
+                action = int(action)
+            else:
+                action = int(action[0])
+        elif isinstance(action, list):
+            action = int(action[0])
+        else:
+            action = int(action)
+            
+        for tls_id in traci.trafficlight.getIDList(): 
+            phase = traci.trafficlight.getPhase(tls_id) 
+            phase_duration = traci.trafficlight.getPhaseDuration(tls_id) 
+            phase_state = traci.trafficlight.getRedYellowGreenState(tls_id)
+            total_phases = len(phase_state)
+            
+            if action == 0: 
+                if phase %2 == 0: 
                     traci.trafficlight.setPhaseDuration(tls_id, phase_duration + self.extend_time)
-                    self.spat_message_log(f"Extending NS green at {tls_id} by {self.extend_time}s")
+                    self.spat_message_log(f"Extending NS green at {tls_id} by {self.extend_time}s") 
 
-        # Emit aggregated output
-        self._log_tls_events()
+            elif action == 1: 
+                if phase %2 == 1: 
+                    traci.trafficlight.setPhaseDuration(tls_id, phase_duration + self.extend_time) 
+                    self.spat_message_log(f"Extending EW green at {tls_id} by {self.extend_time}s") 
+                    
+            elif action == 2: 
+                traci.trafficlight.setPhase(tls_id, (phase+1) % total_phases) 
+                self.spat_message_log(f"Switching {tls_id} to next phase") 
+
+            elif action == 3: 
+                pass    
+
+        self.phase_time += 1 
+        logger.debug(f"[{self.feature_name}] Action taken: {action} on TLS {tls_id}")
+                
 
     def get_observation(self):
-        dummy_obs = [0.1, 0.2, 0.3]  # dummy observation data
-        logger.debug(f"[{self.feature_name}] Observation: {dummy_obs}")
-        return np.array(dummy_obs)
+        obs = []
+
+        for tls_id in traci.trafficlight.getIDList():
+            lanes = traci.trafficlight.getControlledLanes(tls_id)
+            direction_groups = {}
+            for lane in lanes:
+                edge = lane.split('_')[0]
+                if edge not in direction_groups:
+                    direction_groups[edge] = []
+                direction_groups[edge].append(lane)
+
+            direction_queues = []
+
+            for edge, grouped_lanes in direction_groups.items():
+                total_q = 0
+                for lane in grouped_lanes:
+                    total_q += traci.lane.getLastStepVehicleNumber(lane)
+
+                total_q = min(total_q, 20)
+                direction_queues.append(total_q)
+
+            while len(direction_queues) < 4:
+                direction_queues.append(0)
+            direction_queues = direction_queues[:4]
+
+            elapsed = (traci.trafficlight.getPhaseDuration(tls_id) - traci.trafficlight.getNextSwitch(tls_id)) 
+            elapsed = max(0, min(elapsed, 60))
+
+            state_value = (
+                direction_queues[0]*1 +
+                direction_queues[1]*100 +
+                direction_queues[2]*10000 +
+                direction_queues[3]*1000000 +
+                int(elapsed)*100000000
+            )
+
+            obs.append(state_value/ 1e10)
+            return np.array(obs, dtype=np.float32)
 
     def calculate_reward(self):
-        dummy_reward = 0.5  # dummy reward
-        logger.debug(f"[{self.feature_name}] Reward: {dummy_reward}")
-        return dummy_reward
+        total_waiting = 0.0
+
+        for v_id in traci.vehicle.getIDList():
+            total_waiting += traci.vehicle.getWaitingTime(v_id)
+
+        logger.debug(f"[{self.feature_name}] Reward: {total_waiting}")
+        return -total_waiting
 
     def get_feature_name(self):
         return self.feature_name
