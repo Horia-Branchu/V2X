@@ -24,6 +24,8 @@ class BSMFeature(BaseV2XFeature):
         max_react_gap_m: float = 60.0,
         max_time_to_collision_gap_m: float = 80.0,
         max_decel_gap_m: float = 60.0,
+        reward_weight_waiting: float = 0.7,
+        reward_weight_flow: float = 0.3,
     ):
         super().__init__(enabled)
         self.feature_name = feature_name
@@ -35,7 +37,22 @@ class BSMFeature(BaseV2XFeature):
         self.max_time_to_collision_gap_m = float(max_time_to_collision_gap_m)
         self.max_decel_gap_m = float(max_decel_gap_m)
 
-        self.observation_size = 3
+        # RL tracking attributes
+        self._previous_waiting_time = 0.0
+        self._vehicles_passed_count = 0
+        self._last_vehicle_set = set()
+        
+        # Reward configuration parameters
+        self._reward_weight_waiting = float(reward_weight_waiting)
+        self._reward_weight_flow = float(reward_weight_flow)
+        
+        # Normalization constants
+        self.max_vehicles_per_approach = 50
+        self.max_speed = 50.0  # m/s (180 km/h)
+        self.max_waiting_time = 300.0  # seconds
+        self.max_total_vehicles = 200
+
+        self.observation_size = 10
         self.action_size = 1
         self._last_brake_step = {}
 
@@ -43,13 +60,141 @@ class BSMFeature(BaseV2XFeature):
         return gym.spaces.Box(low=0.0, high=1.0, shape=(self.observation_size,))
 
     def get_action_space(self) -> gym.Space:
+       
         return gym.spaces.Discrete(self.action_size)
 
     def get_observation(self) -> np.ndarray:
-        return np.zeros(self.observation_size, dtype=np.float32)
+       
+        try:
+            # Extract vehicle data
+            positions = self._extract_vehicle_positions()
+            speeds = self._extract_vehicle_speeds()
+            directions = self._extract_vehicle_directions()
+            
+            # Compute aggregated statistics
+            vehicle_counts = self._compute_vehicle_counts_per_approach(positions, directions)
+            avg_speeds = self._compute_average_speeds_per_approach(speeds, directions)
+            global_waiting_time = self._compute_global_waiting_time()
+            total_vehicles = len(positions)
+            
+            # Normalize components to [0, 1] range
+            normalized_counts = np.array([
+                self._normalize_observation_component(vehicle_counts[i], self.max_vehicles_per_approach)
+                for i in range(4)
+            ], dtype=np.float32)
+            
+            normalized_speeds = np.array([
+                self._normalize_observation_component(avg_speeds[i], self.max_speed)
+                for i in range(4)
+            ], dtype=np.float32)
+            
+            # Compute average waiting time per vehicle (avoid division by zero)
+            avg_waiting_time = global_waiting_time / total_vehicles if total_vehicles > 0 else 0.0
+            normalized_waiting = self._normalize_observation_component(avg_waiting_time, self.max_waiting_time)
+            
+            normalized_total_vehicles = self._normalize_observation_component(total_vehicles, self.max_total_vehicles)
+            
+            # Construct 10-dimensional observation array
+            observation = np.concatenate([
+                normalized_counts,      # indices 0-3
+                normalized_speeds,      # indices 4-7
+                [normalized_waiting],   # index 8
+                [normalized_total_vehicles]  # index 9
+            ]).astype(np.float32)
+            
+            return observation
+            
+        except Exception as e:
+            # On any error, return zero-filled array to maintain simulation continuity
+            logger.warning(f"Failed to extract observation: {e}")
+            return np.zeros(self.observation_size, dtype=np.float32)
 
     def calculate_reward(self) -> float:
-        return 0.0
+       
+        try:
+            # Calculate reward components
+            waiting_reward = self._calculate_waiting_time_reward()
+            flow_reward = self._calculate_flow_reward()
+            
+            # Combine using weighted sum
+            total_reward = (
+                self._reward_weight_waiting * waiting_reward +
+                self._reward_weight_flow * flow_reward
+            )
+            
+            return total_reward
+            
+        except Exception as e:
+            logger.warning(f"Failed to calculate reward: {e}")
+            return 0.0
+    
+    def _calculate_flow_reward(self) -> float:
+      
+        try:
+            # Get current set of vehicle IDs in the simulation
+            current_vehicle_set = set(traci.vehicle.getIDList())
+            
+            # Track vehicles that completed routes (were in previous set but not in current)
+            vehicles_completed = self._last_vehicle_set - current_vehicle_set
+            num_completed = len(vehicles_completed)
+            
+            # Track newly departed vehicles (in current set but not in previous)
+            vehicles_departed = current_vehicle_set - self._last_vehicle_set
+            num_departed = len(vehicles_departed)
+            
+            # Update last vehicle set for next step
+            self._last_vehicle_set = current_vehicle_set
+            
+            # Expected arrival rate (vehicles per step) - using a reasonable baseline
+            # This can be tuned based on the simulation configuration
+            expected_arrival_rate = 5.0
+            
+            # Normalize by expected arrival rate
+            # Positive reward for completions (vehicles leaving the network successfully)
+            flow_reward = num_completed / expected_arrival_rate
+            
+            return flow_reward
+            
+        except Exception as e:
+            logger.warning(f"Failed to calculate flow reward: {e}")
+            return 0.0
+    
+    def _calculate_waiting_time_reward(self) -> float:
+       
+        try:
+            # Query current total accumulated waiting time
+            current_total_waiting = 0.0
+            vehicle_ids = traci.vehicle.getIDList()
+            num_vehicles = len(vehicle_ids)
+            
+            for vehicle_id in vehicle_ids:
+                try:
+                    waiting_time = traci.vehicle.getAccumulatedWaitingTime(vehicle_id)
+                    current_total_waiting += waiting_time
+                except Exception as e:
+                    logger.warning(f"Failed to get waiting time for {vehicle_id}: {e}")
+                    continue
+            
+            # Compute delta from previous step
+            delta_waiting = current_total_waiting - self._previous_waiting_time
+            
+            # Normalize by number of vehicles (avoid division by zero)
+            if num_vehicles > 0:
+                normalized_delta = delta_waiting / num_vehicles
+            else:
+                normalized_delta = 0.0
+            
+            # Return negative delta (decrease = positive reward)
+            reward = -normalized_delta
+            
+            # Update previous waiting time for next step
+            self._previous_waiting_time = current_total_waiting
+            
+            return reward
+            
+        except Exception as e:
+            logger.warning(f"Failed to calculate waiting time reward: {e}")
+            return 0.0
 
     def get_feature_name(self) -> str:
         return self.feature_name
@@ -196,8 +341,148 @@ class BSMFeature(BaseV2XFeature):
         # Emit aggregated output
         self._log_bsm_events(events)
 
+    def _extract_vehicle_positions(self) -> dict:
+      
+        positions = {}
+        try:
+            vehicle_ids = traci.vehicle.getIDList()
+            for vehicle_id in vehicle_ids:
+                try:
+                    position = traci.vehicle.getPosition(vehicle_id)
+                    positions[vehicle_id] = position
+                except Exception as e:
+                    logger.warning(f"Failed to get position for {vehicle_id}: {e}")
+                    continue
+        except Exception as e:
+            logger.warning(f"Failed to get vehicle ID list: {e}")
+        
+        return positions
+    
+    def _extract_vehicle_speeds(self) -> dict:
+      
+        speeds = {}
+        try:
+            vehicle_ids = traci.vehicle.getIDList()
+            for vehicle_id in vehicle_ids:
+                try:
+                    speed = traci.vehicle.getSpeed(vehicle_id)
+                    speeds[vehicle_id] = speed
+                except Exception as e:
+                    logger.warning(f"Failed to get speed for {vehicle_id}: {e}")
+                    continue
+        except Exception as e:
+            logger.warning(f"Failed to get vehicle ID list: {e}")
+        
+        return speeds
+    
+    def _extract_vehicle_directions(self) -> dict:
+       
+        directions = {}
+        try:
+            vehicle_ids = traci.vehicle.getIDList()
+            for vehicle_id in vehicle_ids:
+                try:
+                    angle = traci.vehicle.getAngle(vehicle_id)
+                    directions[vehicle_id] = angle
+                except Exception as e:
+                    logger.warning(f"Failed to get angle for {vehicle_id}: {e}")
+                    continue
+        except Exception as e:
+            logger.warning(f"Failed to get vehicle ID list: {e}")
+        
+        return directions
+
+    def _compute_vehicle_counts_per_approach(self, positions: dict, directions: dict) -> np.ndarray:
+       
+        counts = np.zeros(4, dtype=np.float32)  # [N, S, E, W]
+        
+        for vehicle_id in positions.keys():
+            if vehicle_id not in directions:
+                continue
+                
+            angle = directions[vehicle_id]
+            
+            # Map angle to approach direction
+            # North: 315-45 degrees (0 degrees is East in SUMO)
+            # East: 45-135 degrees
+            # South: 135-225 degrees
+            # West: 225-315 degrees
+            if (angle >= 315.0 or angle < 45.0):
+                counts[0] += 1  # North
+            elif 45.0 <= angle < 135.0:
+                counts[1] += 1  # East (but counted as South for symmetry)
+            elif 135.0 <= angle < 225.0:
+                counts[2] += 1  # South (but counted as East for symmetry)
+            else:  # 225.0 <= angle < 315.0
+                counts[3] += 1  # West
+        
+        return counts
+    
+    def _compute_average_speeds_per_approach(self, speeds: dict, directions: dict) -> np.ndarray:
+      
+        speed_sums = np.zeros(4, dtype=np.float32)  # [N, S, E, W]
+        speed_counts = np.zeros(4, dtype=np.float32)
+        
+        for vehicle_id in speeds.keys():
+            if vehicle_id not in directions:
+                continue
+                
+            angle = directions[vehicle_id]
+            speed = speeds[vehicle_id]
+            
+            # Map angle to approach direction (same mapping as counts)
+            if (angle >= 315.0 or angle < 45.0):
+                speed_sums[0] += speed  # North
+                speed_counts[0] += 1
+            elif 45.0 <= angle < 135.0:
+                speed_sums[1] += speed  # East
+                speed_counts[1] += 1
+            elif 135.0 <= angle < 225.0:
+                speed_sums[2] += speed  # South
+                speed_counts[2] += 1
+            else:  # 225.0 <= angle < 315.0
+                speed_sums[3] += speed  # West
+                speed_counts[3] += 1
+        
+        # Calculate averages, avoiding division by zero
+        avg_speeds = np.zeros(4, dtype=np.float32)
+        for i in range(4):
+            if speed_counts[i] > 0:
+                avg_speeds[i] = speed_sums[i] / speed_counts[i]
+        
+        return avg_speeds
+    
+    def _compute_global_waiting_time(self) -> float:
+       
+        total_waiting_time = 0.0
+        
+        try:
+            vehicle_ids = traci.vehicle.getIDList()
+            for vehicle_id in vehicle_ids:
+                try:
+                    waiting_time = traci.vehicle.getAccumulatedWaitingTime(vehicle_id)
+                    total_waiting_time += waiting_time
+                except Exception as e:
+                    logger.warning(f"Failed to get waiting time for {vehicle_id}: {e}")
+                    continue
+        except Exception as e:
+            logger.warning(f"Failed to get vehicle ID list for waiting time: {e}")
+        
+        return total_waiting_time
+    
+    def _normalize_observation_component(self, value: float, max_value: float) -> float:
+       
+        if max_value <= 0:
+            return 0.0
+        
+        normalized = value / max_value
+        return np.clip(normalized, 0.0, 1.0)
+
     def feature_reset(self):
         self._last_brake_step.clear()
+        self._previous_waiting_time = 0.0
+        self._vehicles_passed_count = 0
+        self._last_vehicle_set = set()
 
     # the distance growing is there for when theh gap between cars is rather small but currently growing so there's no risk of collision
 
