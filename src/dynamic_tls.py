@@ -14,7 +14,7 @@ class DynamicTLS(BaseV2XFeature):
         super().__init__(enabled)
         self.feature_name = feature_name
         self.observation_size = 3       # dummy observation size
-        self.action_size = 2            # dummy action size
+        self.action_size = 4            # dummy action size
         self.detection_range = 50       # meters
         self.extend_time = 5            # seconds
         self.tls_override_times = {}    # {tls_id: timestamp}
@@ -152,8 +152,22 @@ class DynamicTLS(BaseV2XFeature):
     
     def take_action(self, action):
 
+        """
+        Action mapping:
+        0 - Extend NS
+        1 - Extend EW
+        2 - Switch phase
+        3 - Maintain
+        """
+
         for tls_id in traci.trafficlight.getIDList():
-            self.dynamic_tls(tls_id)
+            phase = traci.trafficlight.getPhase(tls_id)
+            phase_duration = traci.trafficlight.getPhaseDuration(tls_id)
+
+            if action == 0:
+                if phase %2 == 0:  # NS green
+                    traci.trafficlight.setPhaseDuration(tls_id, phase_duration + self.extend_time)
+                    self.spat_message_log(f"Extending NS green at {tls_id} by {self.extend_time}s")
 
     def get_observation(self):
         dummy_obs = [0.1, 0.2, 0.3]  # dummy observation data

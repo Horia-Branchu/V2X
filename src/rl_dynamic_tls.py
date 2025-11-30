@@ -3,10 +3,10 @@ import gymnasium as gym
 import libsumo as traci 
 import logging
 
-from base_sumo_env import BaseSumoEnvironment
+
 logger = logging.getLogger("v2x.features")
 
-class RLDynamicTLS(BaseSumoEnvironment):
+class RLDynamicTLS():
     def __init__(self, feature_name="RL_DynamicTLS", enable=True):
         super().__init__(enable)
         self.feature_name = feature_name
