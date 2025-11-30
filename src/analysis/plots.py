@@ -231,7 +231,7 @@ def main():
     root = Path(__file__).resolve().parents[1]
     csv_path = find_latest_csv(root, filename=vehicle_filename)
     if csv_path is None:
-        print("No vehicles.csv file found.")
+        print("No {vehicle_filename} file found.")
         return
 
     out_dir = csv_path.parent
@@ -249,7 +249,7 @@ def main():
     else:
         df = df_v2x
         print(f"Using dataset: {csv_path}\n"
-              f"(No vehicles_baseline.csv found, plotting single run.)")
+              f"(No {baseline_path.name} found, plotting single run.)")
 
     df_sampled = set_total_points(df, total_points=200000)
 
