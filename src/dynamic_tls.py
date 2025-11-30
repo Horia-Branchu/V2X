@@ -1,7 +1,9 @@
 import numpy as np
 import gymnasium as gym
 import logging
+import sys
 import libsumo as traci
+from terminal_display import terminal_display
 from base_v2x_feature import BaseV2XFeature
 
 # feature-level logger; routine per-step data goes to DEBUG, important events should use INFO
@@ -18,7 +20,7 @@ class DynamicTLS(BaseV2XFeature):
         self.detection_range = 50       # meters
         self.extend_time = 5            # seconds
         self.tls_override_times = {}    # {tls_id: timestamp}
-
+        self._tls_log_events = [] # per-step event buffer for compact TTY display or verbose non-TTY logs
     def get_observation_space(self):
         return gym.spaces.Box(low=0, high=1, shape=(self.observation_size,))
 
@@ -76,11 +78,17 @@ class DynamicTLS(BaseV2XFeature):
                     return False
         return True
     
-    # Prints SPaT (Signal Phase and Timing) messages to console
-    def spat_message_log(self,message):
+    # Collect SPaT (Signal Phase and Timing) messages into the per-step buffer.
+    # event_type: one of EXTEND_GREEN, SWITCH_GREEN, IMBALANCE, or GENERIC
+    def spat_message_log(self, message, event_type: str = "GENERIC"):
+        # Build structured verbose similar to BSM feature logs and a short snippet
         timestamp = traci.simulation.getTime()
-        log_message = f"[{timestamp:.1f}s] {message}"
-        logger.info(log_message)
+        verbose = (
+            f"[{self.feature_name}] {event_type}: {message} @ {timestamp:.1f}s"
+        )
+        # short version for TTY display: first clause or truncated form
+        short = message.split(',')[0]
+        self._tls_log_events.append((verbose, short))
 
     # Main dynamic TLS control function:
     # - detects vehicles approaching intersections
@@ -119,7 +127,10 @@ class DynamicTLS(BaseV2XFeature):
                 # Case 1: Extend already green light
                 if self.is_lane_green(tls_id, lane_id) and remaining < self.extend_time:
                     traci.trafficlight.setPhaseDuration(tls_id, self.extend_time)
-                    self.spat_message_log(f"Vehicle {v_id} approaching {tls_id}, extending GREEN for {self.extend_time}s.")
+                    self.spat_message_log(
+                        f"Vehicle {v_id} approaching {tls_id}, extending GREEN for {self.extend_time}s.",
+                        event_type="EXTEND_GREEN",
+                    )
                     return
                 
                 # Case 2: Turn green if only one lane is approaching
@@ -128,7 +139,10 @@ class DynamicTLS(BaseV2XFeature):
                         self.set_tls_green_for_vehicle(tls_id, v_id)
                         traci.trafficlight.setPhaseDuration(tls_id, self.extend_time)
                         self.tls_override_times[tls_id] = current_time
-                        self.spat_message_log(f"Only vehicles on lane {lane_id} near {tls_id}, switching to GREEN")
+                        self.spat_message_log(
+                            f"Only vehicles on lane {lane_id} near {tls_id}, switching to GREEN",
+                            event_type="SWITCH_GREEN",
+                        )
                     return
                 
                 # Case 3: Turn light green if there is only one vehicle waiting for a lot of vehicles to pass
@@ -147,13 +161,21 @@ class DynamicTLS(BaseV2XFeature):
                             self.set_tls_green_for_vehicle(tls_id,v_id)
                             traci.trafficlight.setPhaseDuration(tls_id, self.extend_time)
                             self.tls_override_times[tls_id] = current_time
-                            self.spat_message_log(f"Imbalance detected at {tls_id}, granting short green for lane {min_edge}")
+                            self.spat_message_log(
+                                f"Imbalance detected at {tls_id}, granting short green for lane {min_edge}",
+                                event_type="IMBALANCE",
+                            )
         return
     
     def take_action(self, action):
+        # clear per-step buffer
+        self._tls_log_events.clear()
 
         for tls_id in traci.trafficlight.getIDList():
             self.dynamic_tls(tls_id)
+
+        # Emit aggregated output
+        self._log_tls_events()
 
     def get_observation(self):
         dummy_obs = [0.1, 0.2, 0.3]  # dummy observation data
@@ -167,6 +189,21 @@ class DynamicTLS(BaseV2XFeature):
 
     def get_feature_name(self):
         return self.feature_name
+
+    def _log_tls_events(self):
+
+        if not self._tls_log_events:
+            return
+
+        if sys.stdout.isatty():
+            tls_count = len(self._tls_log_events)
+            latest_short = self._tls_log_events[-1][1]
+            summary = f"[{self.feature_name}] | tls_events={tls_count} | {latest_short}"
+            terminal_display.update("TLS", summary)
+            terminal_display.render()
+        else:
+            for verbose, _ in self._tls_log_events:
+                logger.info(verbose)
 
     def feature_step(self):
         # default behavior: don't spam the console for rule-based runs

@@ -1,7 +1,9 @@
 import numpy as np
 import gymnasium as gym
 import logging
+import sys
 import libsumo as traci
+from terminal_display import terminal_display
 from base_v2x_feature import BaseV2XFeature
 
 logger = logging.getLogger("v2x.features")
@@ -52,13 +54,55 @@ class BSMFeature(BaseV2XFeature):
     def get_feature_name(self) -> str:
         return self.feature_name
 
-    # O(n) as you requested in our call, utilizes get leader function from TRACI api, if there is no leader ahead of a car then it skips the checks for it
-    # changes were made to differentiate between situations that trigger any sort of slowdown so that the logs are clearer, functionality is the same
+    def _log_bsm_events(self, events: dict):
+        any_events = any(len(v) for v in events.values())
+        if not any_events:
+            return
+
+        summary_parts = []
+        em_count = len(events["EMERGENCY_BRAKE"])
+        pre_count = len(events["PREEMPTIVE_SLOWDOWN"])
+        warn_count = len(events["WARN"])
+        if em_count:
+            summary_parts.append(f"EMG={em_count}")
+        if pre_count:
+            summary_parts.append(f"PRE={pre_count}")
+        if warn_count:
+            summary_parts.append(f"WARN={warn_count}")
+
+        latest_short = None
+        if events["EMERGENCY_BRAKE"]:
+            latest_short = events["EMERGENCY_BRAKE"][-1][1]
+        elif events["PREEMPTIVE_SLOWDOWN"]:
+            latest_short = events["PREEMPTIVE_SLOWDOWN"][-1][1]
+        elif events["WARN"]:
+            latest_short = events["WARN"][-1][1]
+
+        summary = f"[{self.feature_name}] | " + " ".join(summary_parts)
+        if latest_short:
+            summary += f" | {latest_short}"
+
+        terminal_display.update("BSM", summary)
+        terminal_display.render()
+
+        if not sys.stdout.isatty():
+            for typ in ("EMERGENCY_BRAKE", "PREEMPTIVE_SLOWDOWN", "WARN"):
+                for verbose, _ in events[typ]:
+                    logger.info(verbose)
+
+    # O(n), utilizes get leader function from TRACI api, if there is no leader ahead of a car then it skips the checks for it
+    # changes were made to differentiate between situations that trigger any sort of slowdown so that the logs are clearer
     def take_action(self, action):
         if not self.enable:
             return
 
         current_time_s = traci.simulation.getTime()
+        
+        events = {
+            "EMERGENCY_BRAKE": [],
+            "PREEMPTIVE_SLOWDOWN": [],
+            "WARN": [],
+        }
 
         for vehicle_id in traci.vehicle.getIDList():
             leader_data = traci.vehicle.getLeader(vehicle_id, dist=self.max_react_gap_m)
@@ -117,28 +161,40 @@ class BSMFeature(BaseV2XFeature):
                 )
 
                 if gap_trigger or time_to_collision_trigger:
-                    logger.info(
+                    verbose = (
                         f"[{self.feature_name}] EMERGENCY_BRAKE: {vehicle_id} -> leader {leader_id} "
                         f"(gap={distance_to_leader_m:.1f}m, time_to_collision={time_to_collision_display}, "
                         f"reasons=[{', '.join(trigger_reasons)}]) @ {current_time_s:.1f}s"
                     )
+                    # short form for TTY summary
+                    short = f"EMG:{vehicle_id}->{leader_id} gap={distance_to_leader_m:.1f}m"
+                    events["EMERGENCY_BRAKE"].append((verbose, short))
                     try:
                         traci.vehicle.slowDown(vehicle_id, 0.0, self.brake_duration_s)
                     except traci.TraCIException as e:
-                        logger.warning(f"[{self.feature_name}] brake failed for {vehicle_id}: {e}")
+                        warn = f"[{self.feature_name}] brake failed for {vehicle_id}: {e}"
+                        events["WARN"].append((warn, warn))
+                        logger.warning(warn)
                 else:
                     target_speed_mps = max(0.0, follower_speed_mps * self.PREEMPTIVE_SLOWDOWN_FACTOR)
-                    logger.info(
+                    verbose = (
                         f"[{self.feature_name}] PREEMPTIVE_SLOWDOWN: {vehicle_id} following {leader_id} "
                         f"(gap={distance_to_leader_m:.1f}m, time_to_collision={time_to_collision_display}, "
                         f"target={target_speed_mps:.2f}m/s, reasons=[{', '.join(trigger_reasons)}]) @ {current_time_s:.1f}s"
                     )
+                    short = f"PRE:{vehicle_id}->{leader_id} gap={distance_to_leader_m:.1f}m tgt={target_speed_mps:.1f}m/s"
+                    events["PREEMPTIVE_SLOWDOWN"].append((verbose, short))
                     try:
                         traci.vehicle.slowDown(vehicle_id, target_speed_mps, self.brake_duration_s)
                     except traci.TraCIException as e:
-                        logger.warning(f"[{self.feature_name}] slowdown failed for {vehicle_id}: {e}")
+                        warn = f"[{self.feature_name}] slowdown failed for {vehicle_id}: {e}"
+                        events["WARN"].append((warn, warn))
+                        logger.warning(warn)
 
                 self._last_brake_step[vehicle_id] = current_time_s
+
+        # Emit aggregated output
+        self._log_bsm_events(events)
 
     def feature_reset(self):
         self._last_brake_step.clear()
