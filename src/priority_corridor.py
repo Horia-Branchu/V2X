@@ -74,8 +74,6 @@ class PriorityCorridorFeature(BaseV2XFeature):
         return positions, edges, edge_to_vehicle_ids
 
     def take_action(self, action) -> None:
-        if not self.enable:
-            return
         try:
             vehicle_ids: Iterable[str] = traci.vehicle.getIDList()
         except Exception as e:
