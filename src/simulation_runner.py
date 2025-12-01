@@ -72,6 +72,7 @@ class SimulationRunner:
                 terminal_display.render()
                 simulation_logic(current_step)
                 current_step += 1
+            self.arrived_vehicles_until_current_step += traci.simulation.getArrivedNumber()
             terminal_display.update("PROGRESSBAR",
                                     self.progress_bar.display_string(self.arrived_vehicles_until_current_step))
             terminal_display.render()
