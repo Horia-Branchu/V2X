@@ -8,13 +8,11 @@ from collections import defaultdict
 from base_v2x_feature import BaseV2XFeature
 logger = logging.getLogger("v2x")
 
-TRIGGER_DISTANCE: float = 100.0          # meters
-SLOWDOWN_FACTOR: float = 0.75           # 75% of current speed while yielding
-YIELD_DURATION_STEPS: int = 6           # seconds to keep lane change order
-# Safety limits
-MIN_SPEED_AFTER_SLOWDOWN: float = 0.0   # allow full stop
-MAX_BULK_COMMANDS_PER_STEP: int = 50   # avoid sending too many TraCI cmds
 PRIORITY_TYPE = "emergency"
+EMERGENCY_CORRIDOR_SCAN_DISTANCE = 120.0        # The distance in which the emergency corridor is scanned
+RETURN_DISTANCE = 150.0     # vehicles return to normal after EMERGENCY_CORRIDOR_SCAN_DISTANCE passed
+LANE_FREE_DIST = 8.0        # how far a car must be from another to consider lane "free"
+MAX_BULK_COMMANDS_PER_STEP: int = 50   # avoid sending too many TraCI cmds
 
 def squared_distance(p1, p2) -> float:
     # Fast squared distance (avoids slow sqrt); used to check proximity
@@ -43,9 +41,6 @@ class PriorityCorridorFeature(BaseV2XFeature):
         return 0.0
 
     def _cache_positions_and_detect_emergencies(self, vehicle_ids):
-        """
-        Cache vehicle positions, cached edges, lane groups, and update emergency list.
-        """
         # First cache positions/edges and discover emergencies only once
         positions: dict[str, tuple[float, float]] = {}
         edges: dict[str, str] = {}
@@ -73,6 +68,77 @@ class PriorityCorridorFeature(BaseV2XFeature):
 
         return positions, edges, edge_to_vehicle_ids
 
+    def _choose_best_lane_for_emergency(self, edge_id):
+        # Pick the lane with the fewest vehicles on this edge
+        # Used so the emergency vehicle always travels in the least-congested lane
+        try:
+            lane_count = traci.edge.getLaneNumber(edge_id)
+        except Exception as e:
+            logger.error(
+                "[%s] Failed reading lane count for edge %s: %s",
+                self.feature_name, edge_id, e
+            )
+            return 0
+
+        lane_loads = {}
+        for lane_index in range(lane_count):
+            lane_id = f"{edge_id}_{lane_index}"
+            try:
+                vehicles_in_lane = traci.lane.getLastStepVehicleIDs(lane_id)
+                lane_loads[lane_index] = len(vehicles_in_lane)
+            except Exception as e:
+                logger.error(
+                    "[%s] Failed reading vehicles on lane %s: %s",
+                    self.feature_name, lane_id, e
+                )
+                # if one lane fails, treat it as very busy so it is never selected
+                lane_loads[lane_index] = 9999
+
+        try:
+            least_used_lane = min(lane_loads, key=lane_loads.get)
+        except Exception as e:
+            logger.error(
+                "[%s] Failed selecting least-used lane for edge %s: %s",
+                self.feature_name, edge_id, e
+            )
+            return 0
+
+        return least_used_lane
+
+    def _lane_is_free_enough(self, edge_id, lane_index, positions, vehicle_id):
+        # Check if the target lane has enough space for a safe merge
+        # Returns True only if no nearby vehicles are too close to block the change
+        lane_id = f"{edge_id}_{lane_index}"
+
+        try:
+            vehicles_in_lane = traci.lane.getLastStepVehicleIDs(lane_id)
+        except Exception as e:
+            logger.error(
+                "[%s] Failed reading vehicles for lane %s: %s",
+                self.feature_name, lane_id, e
+            )
+            return False
+
+        vehicle_position = positions[vehicle_id]
+
+        for other_vehicle_id in vehicles_in_lane:
+            if other_vehicle_id == vehicle_id:
+                continue
+            if other_vehicle_id not in positions:
+                continue
+
+            other_vehicle_position = positions[other_vehicle_id]
+
+            too_close = (
+                    abs(other_vehicle_position[0] - vehicle_position[0]) < LANE_FREE_DIST and
+                    abs(other_vehicle_position[1] - vehicle_position[1]) < LANE_FREE_DIST
+            )
+
+            if too_close:
+                return False
+
+        return True
+
     def take_action(self, action) -> None:
         try:
             vehicle_ids: Iterable[str] = traci.vehicle.getIDList()
@@ -92,94 +158,140 @@ class PriorityCorridorFeature(BaseV2XFeature):
         if not priority_ids:
             return
         cmds_sent = 0
-        trigger_distance_sq = TRIGGER_DISTANCE * TRIGGER_DISTANCE
 
         for priority_id in priority_ids:
-            if priority_id not in positions or priority_id not in edges:
+            edge_id = edges[priority_id]
+            if edge_id == "":
                 continue
-
-            priority_edge_id = edges[priority_id]
-            priority_pos = positions[priority_id]
 
             try:
-                emergency_lane_index = traci.vehicle.getLaneIndex(priority_id)
-                lane_count = traci.edge.getLaneNumber(priority_edge_id)
+                lane_count = traci.edge.getLaneNumber(edge_id)
             except Exception as e:
                 logger.error(
-                    "[%s] TraCIException while reading lane info for emergency %s on edge %s: %s",
-                    self.feature_name,
-                    priority_id,
-                    priority_edge_id,
-                    e,
+                    "[%s] Could not read lane info for priority vehicle %s on edge %s: %s",
+                    self.feature_name, priority_id, edge_id, e
                 )
                 continue
 
-            for vehicle_id in edge_to_vehicle_ids.get(priority_edge_id, ()):
-                # Skip vehicles that should not yield:
-                should_skip_vehicle = (
-                        vehicle_id == priority_id
-                        or vehicle_id in self._emergency_vehicle_ids
-                        or vehicle_id in self._vehicles_that_yielded
-                        or vehicle_id not in positions
-                )
+            best_lane_index = self._choose_best_lane_for_emergency(edge_id)
+            priority_position = positions[priority_id]
 
-                if should_skip_vehicle:
+            for vehicle_id in edge_to_vehicle_ids.get(edge_id, []):
+                if vehicle_id == priority_id or vehicle_id not in positions:
                     continue
 
-                # Distance gate: if too far from emergency, skip.
-                dist_sq = squared_distance(positions[vehicle_id], priority_pos)
-                if dist_sq > trigger_distance_sq:
+                vehicle_position = positions[vehicle_id]
+
+                # Get distance between the emergency vehicle and the current vehicle
+                distance_sq = squared_distance(vehicle_position, priority_position)
+                # If the emergency vehicle already passed far enough, restore normal behavior
+                if distance_sq > RETURN_DISTANCE * RETURN_DISTANCE:
+                    try:
+                        traci.vehicle.setLaneChangeMode(vehicle_id, 1621)
+                    except Exception as e:
+                        logger.error(
+                            "[%s] Failed restoring laneChangeMode for %s: %s",
+                            self.feature_name, vehicle_id, e
+                        )
                     continue
 
+                # Only cars in EMERGENCY_CORRIDOR_SCAN_DISTANCE’s desired lane must yield
                 try:
                     vehicle_lane_index = traci.vehicle.getLaneIndex(vehicle_id)
-
-                    # Only move cars that are in the same lane as the ambulance
-                    if vehicle_lane_index != emergency_lane_index:
-                        continue
-
-                    # If there is only one lane on this edge, there is nowhere to move
-                    if lane_count <= 1:
-                        continue
-
-                    # Choose a valid target lane (away from emergency lane)
-                    if emergency_lane_index > 0:
-                        # emergency vehicle is not in lane 0, so move cars to the right (lower index)
-                        target_lane_index = emergency_lane_index - 1
-                    else:
-                        # emergency vehicle is in lane 0, so move cars to lane 1
-                        target_lane_index = emergency_lane_index + 1
-
-                    traci.vehicle.changeLane(vehicle_id, target_lane_index, YIELD_DURATION_STEPS)
-
-                    current_speed = traci.vehicle.getSpeed(vehicle_id)
-                    new_speed = max(
-                        MIN_SPEED_AFTER_SLOWDOWN,
-                        current_speed * SLOWDOWN_FACTOR,
-                    )
-                    traci.vehicle.setSpeedMode(vehicle_id, 0)
-                    traci.vehicle.setSpeed(vehicle_id, new_speed)
-
-                    self._vehicles_that_yielded.add(vehicle_id)
-
-                    logger.info(
-                        f"[{self.feature_name}] YIELD: {vehicle_id} -> lane {target_lane_index} "
-                        f"(dist={dist_sq ** 0.5:.1f}m, new_speed={new_speed:.2f}) "
-                        f"@ {traci.simulation.getTime():.1f}s"
-                    )
-
-                    cmds_sent += 1
-                    if cmds_sent >= MAX_BULK_COMMANDS_PER_STEP:
-                        return
                 except Exception as e:
                     logger.error(
-                        "[%s] TraCIException while yielding vehicle %s on edge %s: %s",
-                        self.feature_name,
-                        vehicle_id,
-                        priority_edge_id,
-                        e,
+                        "[%s] Failed reading lane index for vehicle %s: %s",
+                        self.feature_name, vehicle_id, e
                     )
                     continue
+
+                if vehicle_lane_index != best_lane_index:
+                    continue
+
+                # Skip stationary vehicles
+                try:
+                    vehicle_speed = traci.vehicle.getSpeed(vehicle_id)
+                except Exception as e:
+                    logger.error(
+                        "[%s] Failed reading speed for vehicle %s: %s",
+                        self.feature_name, vehicle_id, e
+                    )
+                    continue
+
+                # Ignore stopped vehicles
+                if vehicle_speed < 0.1:
+                    continue
+
+                # Determine candidate lanes (left/right) for yielding
+                adjacent_lane_candidates = []
+                if best_lane_index + 1 < lane_count:    # Add the lane to the right
+                    adjacent_lane_candidates.append(best_lane_index + 1)
+                if best_lane_index - 1 >= 0:            # Add the lane to the left
+                    adjacent_lane_candidates.append(best_lane_index - 1)
+
+                vehicle_moved = False
+
+                # Attempt to merge the vehicle into a free adjacent lane
+                for target_lane_index in adjacent_lane_candidates:
+
+                    try:
+                        # Ensure the target lane has enough free space for a safe merge
+                        lane_is_free = self._lane_is_free_enough(
+                            edge_id=edge_id,
+                            lane_index=target_lane_index,
+                            positions=positions,
+                            vehicle_id=vehicle_id
+                        )
+                    except Exception as e:
+                        logger.error(
+                            "[%s] Lane free check failed for vehicle %s on edge %s: %s",
+                            self.feature_name, vehicle_id, edge_id, e
+                        )
+                        continue
+
+                    if not lane_is_free:
+                        continue
+
+                    # Determine merge direction: +1 = left, -1 = right
+                    direction = 1 if target_lane_index > vehicle_lane_index else -1
+
+                    try:
+                        if not traci.vehicle.couldChangeLane(vehicle_id, direction):
+                            continue
+                    except Exception as e:
+                        logger.error(
+                            "[%s] couldChangeLane failed for vehicle %s → direction %s: %s",
+                            self.feature_name, vehicle_id, direction, e
+                        )
+                        continue
+
+                    # Perform the lane change
+                    try:
+                        traci.vehicle.setLaneChangeMode(vehicle_id, 0)
+                        traci.vehicle.changeLane(vehicle_id, target_lane_index, 3)
+                        vehicle_moved = True
+                        cmds_sent += 1
+
+                        # Compute distance for debug log
+                        distance_meters = squared_distance(vehicle_position, priority_position) ** 0.5
+
+                        logger.info(
+                            f"[{self.feature_name}] YIELD: vehicle {vehicle_id} → lane {target_lane_index} "
+                            f"(dist={distance_meters:.1f}m) @ {traci.simulation.getTime():.1f}s"
+                        )
+
+                    except Exception as e:
+                        logger.error(
+                            "[%s] Lane change failed for vehicle %s → lane %s: %s",
+                            self.feature_name, vehicle_id, target_lane_index, e
+                        )
+                        continue
+
+                    if vehicle_moved:
+                        break
+
+                if cmds_sent >= MAX_BULK_COMMANDS_PER_STEP:
+                    return
 
     def feature_step(self):
         # default behavior: don't spam the console for rule-based runs
