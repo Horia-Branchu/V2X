@@ -82,7 +82,7 @@ class BaseSumoEnvironment(gym.Env):
             traci.start(self.sumo_cmd)
         finally:
             stop_event.set()
-            
+
         self.current_step = 0
 
         for feature in self.features:
@@ -143,7 +143,17 @@ class BaseSumoEnvironment(gym.Env):
 
         action_idx = 0
         for feature in self.features:
-            feature_action = action[action_idx] if isinstance(action, (list, np.ndarray)) else action
+            if isinstance(action, (list, np.ndarray, tuple)):
+                if isinstance(action, np.ndarray) and action.ndim == 0:
+                    feature_action = action.item()
+                else:
+                    if action_idx < len(action):
+                        feature_action = action[action_idx]
+                    else:
+                        feature_action = action[-1]
+            else:
+                feature_action = action
+
             feature.take_action(feature_action)
             action_idx += 1
 
