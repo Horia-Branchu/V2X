@@ -45,6 +45,10 @@ class BSMFeature(BaseV2XFeature):
         # Reward configuration parameters
         self._reward_weight_waiting = float(reward_weight_waiting)
         self._reward_weight_flow = float(reward_weight_flow)
+
+        # Adaptive baseline for flow reward normalization
+        self._baseline_completion_rate = None
+        self._baseline_alpha = 0.01 
         
         # Normalization constants
         self.max_vehicles_per_approach = 50
@@ -134,13 +138,30 @@ class BSMFeature(BaseV2XFeature):
             
             self._last_vehicle_set = current_vehicle_set
             
-            expected_arrival_rate = 5.0
+            expected_completion_rate = self._update_baseline_completion_rate(num_completed)
             
-            return num_completed / expected_arrival_rate #returning flow reward
+            if expected_completion_rate > 0.1:
+                return num_completed / expected_completion_rate
+            else:
+                return 0.0  #returning flow reward
             
         except Exception as e:
             logger.warning(f"Failed to calculate flow reward: {e}")
             return 0.0
+        
+    def _update_baseline_completion_rate(self, num_completed: int) -> float:
+        
+        if self._baseline_completion_rate is None:
+            # Initialize with first observation
+            self._baseline_completion_rate = max(num_completed, 5.0)
+        else:
+            # Exponential moving average: new_baseline = (1-α)*old + α*new
+            self._baseline_completion_rate = (
+                (1 - self._baseline_alpha) * self._baseline_completion_rate +
+                self._baseline_alpha * num_completed
+            )
+        
+        return self._baseline_completion_rate
     
     def _calculate_waiting_time_reward(self) -> float:
         try:
