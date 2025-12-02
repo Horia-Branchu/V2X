@@ -7,6 +7,10 @@
 .build/
 .vs/
 
+#files which are not mine
+progress_bar.py
+simulation_runner.py
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
