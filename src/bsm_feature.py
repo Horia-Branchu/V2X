@@ -136,9 +136,7 @@ class BSMFeature(BaseV2XFeature):
             
             expected_arrival_rate = 5.0
             
-            flow_reward = num_completed / expected_arrival_rate
-            
-            return flow_reward
+            return num_completed / expected_arrival_rate #returning flow reward
             
         except Exception as e:
             logger.warning(f"Failed to calculate flow reward: {e}")
