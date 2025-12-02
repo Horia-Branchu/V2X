@@ -163,11 +163,9 @@ class BSMFeature(BaseV2XFeature):
             else:
                 normalized_delta = 0.0
             
-            reward = -normalized_delta
-            
             self._previous_waiting_time = current_total_waiting
-            
-            return reward
+
+            return -normalized_delta # negative = positive reward
             
         except Exception as e:
             logger.warning(f"Failed to calculate waiting time reward: {e}")
