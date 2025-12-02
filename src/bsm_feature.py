@@ -48,7 +48,7 @@ class BSMFeature(BaseV2XFeature):
 
         # Adaptive baseline for flow reward normalization
         self._baseline_completion_rate = None
-        self._baseline_alpha = 0.01 
+        self._baseline_alpha = 0.0003
         
         # Normalization constants
         self.max_vehicles_per_approach = 50
