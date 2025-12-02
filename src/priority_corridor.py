@@ -4,13 +4,14 @@ import numpy as np
 import gymnasium as gym
 import libsumo as traci
 import logging
+from terminal_display import terminal_display
 from collections import defaultdict
 from base_v2x_feature import BaseV2XFeature
 logger = logging.getLogger("v2x")
 
 PRIORITY_TYPE = "emergency"
 EMERGENCY_CORRIDOR_SCAN_DISTANCE = 120.0        # The distance in which the emergency corridor is scanned
-RETURN_DISTANCE = 150.0     # vehicles return to normal after EMERGENCY_CORRIDOR_SCAN_DISTANCE passed
+RETURN_DISTANCE = 120.0     # vehicles return to normal after EMERGENCY_CORRIDOR_SCAN_DISTANCE passed
 LANE_FREE_DIST = 8.0        # how far a car must be from another to consider lane "free"
 MAX_BULK_COMMANDS_PER_STEP: int = 50   # avoid sending too many TraCI cmds
 
@@ -275,9 +276,9 @@ class PriorityCorridorFeature(BaseV2XFeature):
                         # Compute distance for debug log
                         distance_meters = squared_distance(vehicle_position, priority_position) ** 0.5
 
-                        logger.info(
-                            f"[{self.feature_name}] YIELD: vehicle {vehicle_id} → lane {target_lane_index} "
-                            f"(dist={distance_meters:.1f}m) @ {traci.simulation.getTime():.1f}s"
+                        terminal_display.update(
+                            "PRIORITY",
+                            f"YIELD: {vehicle_id} -> lane {target_lane_index} (dist={distance_meters:.1f}m)"
                         )
 
                     except Exception as e:
