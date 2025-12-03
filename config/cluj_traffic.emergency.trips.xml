@@ -1,26 +1,27 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<!-- generated on 2025-12-01 09:52:25.497167 by Eclipse SUMO randomTrips.py v1_24_0+1549-ae831a14bcc
+<!-- generated on 2025-12-03 17:19:10.080616 by Eclipse SUMO randomTrips.py v1_24_0+1549-ae831a14bcc
 <configuration>
     <net-file value="cluj_network.net.xml.gz"/>
     <weights-prefix value="edge_weights"/>
     <output-trip-file value="cluj_traffic.emergency.trips.xml"/>
     <prefix value="e1_"/>
     <trip-attributes value="type=&quot;emergency&quot;"/>
+    <allow-fringe value="True"/>
     <end value="500.0"/>
     <period value="50.0"/>
 </configuration>
 -->
 
 <routes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/routes_file.xsd">
-    <trip id="e1_0" depart="0.00" from="1391634404" to="-122250880" type="emergency"/>
-    <trip id="e1_1" depart="50.00" from="-31582042#1" to="-31620956#3" type="emergency"/>
-    <trip id="e1_2" depart="100.00" from="169340322" to="31583996#4" type="emergency"/>
-    <trip id="e1_3" depart="150.00" from="43281142" to="-169234873#9" type="emergency"/>
-    <trip id="e1_4" depart="200.00" from="-660211229" to="-1306332580" type="emergency"/>
-    <trip id="e1_5" depart="250.00" from="-255441635#1" to="168832234#1" type="emergency"/>
-    <trip id="e1_6" depart="300.00" from="-1164548509" to="-31580080#2" type="emergency"/>
-    <trip id="e1_7" depart="350.00" from="150968420" to="169267672" type="emergency"/>
-    <trip id="e1_8" depart="400.00" from="-25609134#1" to="24550929#2" type="emergency"/>
-    <trip id="e1_9" depart="450.00" from="26614921#0" to="-1107805806" type="emergency"/>
+    <trip id="e1_0" depart="0.00" from="1391634404" to="-1212747315" type="emergency"/>
+    <trip id="e1_1" depart="50.00" from="-31582042#1" to="-31620142#0" type="emergency"/>
+    <trip id="e1_2" depart="100.00" from="169340322" to="306537695#0" type="emergency"/>
+    <trip id="e1_3" depart="150.00" from="43281142" to="-168839818" type="emergency"/>
+    <trip id="e1_4" depart="200.00" from="-660211229" to="-1239066131" type="emergency"/>
+    <trip id="e1_5" depart="250.00" from="-1164548509" to="-31579353#4" type="emergency"/>
+    <trip id="e1_6" depart="300.00" from="150968420" to="168839818" type="emergency"/>
+    <trip id="e1_7" depart="350.00" from="-25609134#1" to="227226879#3" type="emergency"/>
+    <trip id="e1_8" depart="400.00" from="26614921#0" to="-1086803903" type="emergency"/>
+    <trip id="e1_9" depart="450.00" from="264788411" to="31584653#2" type="emergency"/>
 </routes>
