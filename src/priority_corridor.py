@@ -211,6 +211,9 @@ class PriorityCorridorFeature(BaseV2XFeature):
 
                 # Get distance between the emergency vehicle and the current vehicle
                 distance_sq = squared_distance(vehicle_position, priority_position)
+                # Too far → ignore
+                if distance_sq > EMERGENCY_CORRIDOR_SCAN_DISTANCE * EMERGENCY_CORRIDOR_SCAN_DISTANCE:
+                    continue
                 # If the emergency vehicle already passed far enough, restore normal behavior
                 if distance_sq > RETURN_DISTANCE * RETURN_DISTANCE:
                     try:
