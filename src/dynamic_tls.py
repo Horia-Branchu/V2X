@@ -22,9 +22,10 @@ class DynamicTLS(BaseV2XFeature):
         self.tls_override_times = {}    # {tls_id: timestamp}
         self._tls_log_events = [] # per-step event buffer for compact TTY display or verbose non-TTY logs
         self.phase_time = 0
+        self.tls = traci.trafficlight.getIDList()
     
     def get_observation_space(self):
-        tls_count = len(traci.trafficlight.getIDList())
+        tls_count = len(self.tls)
         return gym.spaces.Box(low=0, high=60, shape=(tls_count*self.observation_size,), dtype=np.float32)
     
     def get_action_space(self):
@@ -174,7 +175,7 @@ class DynamicTLS(BaseV2XFeature):
         # clear per-step buffer
         self._tls_log_events.clear()
 
-        for tls_id in traci.trafficlight.getIDList():
+        for tls_id in self.tls:
             self.dynamic_tls(tls_id)
 
         # Emit aggregated output
@@ -183,10 +184,9 @@ class DynamicTLS(BaseV2XFeature):
     def get_observation(self):
        obs = []
 
-       tls_list = traci.trafficlight.getIDList()
        directions = ["N", "S", "E", "W"]
 
-       for tls_id in tls_list:
+       for tls_id in self.tls:
            lanes = traci.trafficlight.getControlledLanes(tls_id)
 
            groups = {d: [] for d in directions}
