@@ -19,8 +19,10 @@ class DynamicTLS(BaseV2XFeature):
         self.action_size = 2            # dummy action size
         self.detection_range = 50       # meters
         self.extend_time = 5            # seconds
+        self.lane_last_green = {}       # {lane_id: last_time_green}
+        self.max_wait= 30               # maximum amount of seconds a lane can wait
         self.tls_override_times = {}    # {tls_id: timestamp}
-        self._tls_log_events = [] # per-step event buffer for compact TTY display or verbose non-TTY logs
+        self._tls_log_events = []       # per-step event buffer for compact TTY display or verbose non-TTY logs
     def get_observation_space(self):
         return gym.spaces.Box(low=0, high=1, shape=(self.observation_size,))
 
@@ -66,6 +68,7 @@ class DynamicTLS(BaseV2XFeature):
             tls_state[i] = 'G' if lane_found else 'r'
 
         traci.trafficlight.setRedYellowGreenState(tls_id,''.join(tls_state))
+        self.lane_last_green[lane_id] = traci.simulation.getTime()
 
     # Checks if the TLS light for the named lane is green
     def is_lane_green(self, tls_id,lane_id):
@@ -112,6 +115,24 @@ class DynamicTLS(BaseV2XFeature):
         approaching = self.get_approaching_vehicles_by_lane(tls_id)
         if not approaching:
             return
+
+        forced_lane = None
+        for lane in tls_lanes:
+            last_green = self.lane_last_green.get(lane, 0)
+            if current_time - last_green >= getattr(self, 'max_wait', 30):
+                forced_lane = lane
+                break
+        
+        if forced_lane:
+            v_id = approaching.get(forced_lane, [None])[0]
+            if v_id:
+                self.set_tls_green_for_vehicle(tls_id, v_id)
+                traci.trafficlight.setPhaseDuration(tls_id,self.extend_time)
+                self.tls_override_times[tls_id] = current_time
+                self.lane_last_green[forced_lane] = current_time
+                self.spat_message_log(
+                    f"Max wait time exceeded, forcing GREEN for lane {forced_lane}",
+                    event_type="FORCED_GREEN")
 
         for v_id in vehicle_list:
             lane_id = traci.vehicle.getLaneID(v_id)
