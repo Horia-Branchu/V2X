@@ -4,6 +4,7 @@ import numpy as np
 import gymnasium as gym
 import libsumo as traci
 import logging
+import sys
 from terminal_display import terminal_display
 from collections import defaultdict
 from base_v2x_feature import BaseV2XFeature
@@ -29,6 +30,10 @@ class PriorityCorridorFeature(BaseV2XFeature):
         self.action_size = 2
         self._emergency_vehicle_ids: set[str] = set()
         self._vehicles_that_yielded: set[str] = set()
+        # Per-step event buffer for compact TTY display or verbose non-TTY logs
+        self._priority_log_events: list[tuple[str, str]] = []
+        # Cumulative number of successful yield maneuvers in this run
+        self._priority_yield_total: int = 0
     def get_observation_space(self):
         return gym.spaces.Box(low=0, high=1, shape=(self.observation_size,))
 
@@ -140,6 +145,25 @@ class PriorityCorridorFeature(BaseV2XFeature):
 
         return True
 
+    def _log_priority_events(self):
+        if not self._priority_log_events:
+            return
+
+        latest_short = self._priority_log_events[-1][1]
+
+        if sys.stdout.isatty():
+            summary = (
+                f"[{self.feature_name}] "
+                f"| total_yields={self._priority_yield_total} "
+                f"| {latest_short}"
+            )
+            terminal_display.update("PRIORITY", summary)
+            terminal_display.render()
+        else:
+            # Non-interactive output (piped to file): emit full verbose logs
+            for verbose, _ in self._priority_log_events:
+                logger.info(verbose)
+
     def take_action(self, action) -> None:
         try:
             vehicle_ids: Iterable[str] = traci.vehicle.getIDList()
@@ -152,6 +176,8 @@ class PriorityCorridorFeature(BaseV2XFeature):
             return
         if not vehicle_ids:
             return
+        # clear per-step buffer
+        self._priority_log_events.clear()
 
         positions, edges, edge_to_vehicle_ids = self._cache_positions_and_detect_emergencies(vehicle_ids)
         priority_ids = [vid for vid in self._emergency_vehicle_ids if vid in positions]
@@ -196,7 +222,7 @@ class PriorityCorridorFeature(BaseV2XFeature):
                         )
                     continue
 
-                # Only cars in EMERGENCY_CORRIDOR_SCAN_DISTANCE’s desired lane must yield
+                # Only cars in the lane selected for the emergency vehicle must yield
                 try:
                     vehicle_lane_index = traci.vehicle.getLaneIndex(vehicle_id)
                 except Exception as e:
@@ -276,10 +302,15 @@ class PriorityCorridorFeature(BaseV2XFeature):
                         # Compute distance for debug log
                         distance_meters = squared_distance(vehicle_position, priority_position) ** 0.5
 
-                        terminal_display.update(
-                            "PRIORITY",
-                            f"YIELD: {vehicle_id} -> lane {target_lane_index} (dist={distance_meters:.1f}m)"
+                        verbose = (
+                            f"[{self.feature_name}] YIELD: vehicle {vehicle_id} -> "
+                            f"lane {target_lane_index} (dist={distance_meters:.1f}m) "
+                            f"@ {traci.simulation.getTime():.1f}s"
                         )
+                        short = f"{vehicle_id}->{target_lane_index} dist={distance_meters:.1f}m"
+
+                        self._priority_log_events.append((verbose, short))
+                        self._priority_yield_total += 1
 
                     except Exception as e:
                         logger.error(
@@ -293,6 +324,8 @@ class PriorityCorridorFeature(BaseV2XFeature):
 
                 if cmds_sent >= MAX_BULK_COMMANDS_PER_STEP:
                     return
+        # Emit aggregated output
+        self._log_priority_events()
 
     def feature_step(self):
         # default behavior: don't spam the console for rule-based runs
