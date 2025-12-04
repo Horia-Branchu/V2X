@@ -72,6 +72,10 @@ def main():
     args = SimulationRunner.parse_arguments()
     cfg = resolve_config()
 
+    if not(args.bsm or args.tls or args.priority or args.reroute):
+         raise ValueError(f"\nNo v2x features enabled\n"
+         "At least one of --bsm --tls --priority --reroute must be true")
+
     baseline_collector = DataCollector(batch_size=1000, reset_on_start=True)
     run_once(
         config_path=cfg,
