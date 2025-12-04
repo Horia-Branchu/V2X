@@ -45,14 +45,17 @@ def plot_accel_vs_co2(df, out_dir):
 
         sns.scatterplot(data=df_base, x="accel", y="co2", ax=ax1, alpha=0.25)
         sns.regplot(data=df_base, x="accel", y="co2", ax=ax1, scatter=False, line_kws={"color": "darkorange"})
-        ax1.set_title("Acceleration vs CO2 (Baseline)")
+        ax1.set_title("Baseline")
+        ax1.set_xlabel("Acceleration (m/s²)")
+        ax1.set_ylabel("CO2 emissions (mg/s)")
 
         sns.scatterplot(data=df_v2x, x="accel", y="co2", ax=ax2, alpha=0.25, color="darkorange")
         sns.regplot(data=df_v2x, x="accel", y="co2", ax=ax2, scatter=False, line_kws={"color": "royalblue"})
-        ax2.set_title("Acceleration vs CO2 (V2X)")
+        ax2.set_title("V2X")
+        ax2.set_xlabel("Acceleration (m/s²)")
 
         plt.tight_layout()
-        plt.savefig(out_dir / "plot_accel_co2_side_by_side.png", dpi=150)
+        plt.savefig(out_dir / "acceleration_over_CO2.png", dpi=150)
         plt.close()
 
 def plot_speed_vs_co2(df, out_dir):
@@ -69,14 +72,17 @@ def plot_speed_vs_co2(df, out_dir):
 
         sns.scatterplot(data=df_base, x="speed", y="co2", ax=ax1, alpha=0.3)
         sns.regplot(data=df_base, x="speed", y="co2", ax=ax1, scatter=False, line_kws={"color": "darkorange"})
-        ax1.set_title("CO2 vs Speed (Baseline)")
+        ax1.set_title("Baseline")
+        ax1.set_xlabel("Speed (m/s)")
+        ax1.set_ylabel("CO2 emissions (mg/s)")
 
         sns.scatterplot(data=df_v2x, x="speed", y="co2", ax=ax2, alpha=0.3, color="darkorange")
         sns.regplot(data=df_v2x, x="speed", y="co2", ax=ax2, scatter=False, line_kws={"color": "royalblue"})
-        ax2.set_title("CO2 vs Speed (V2X)")
+        ax2.set_title("V2X")
+        ax2.set_xlabel("Speed (m/s)")
 
         plt.tight_layout()
-        plt.savefig(out_dir / "plot_speed_co2_side_by_side.png", dpi=150)
+        plt.savefig(out_dir / "speed_over_CO2.png", dpi=150)
         plt.close()
 
 def plot_co2_vs_jerk(df, out_dir):
@@ -93,14 +99,17 @@ def plot_co2_vs_jerk(df, out_dir):
 
         sns.scatterplot(data=df_base, x="jerk", y="co2", ax=ax1, alpha=0.3)
         sns.regplot(data=df_base, x="jerk", y="co2", ax=ax1, scatter=False,line_kws={"color": "darkorange"})
-        ax1.set_title("CO2 vs Jerk (Baseline)")
+        ax1.set_title("Baseline")
+        ax1.set_xlabel("Jerk (m/s³)")
+        ax1.set_ylabel("CO2 emissions (mg/s)")
 
         sns.scatterplot(data=df_v2x, x="jerk", y="co2", ax=ax2, alpha=0.3, color="orange")
         sns.regplot(data=df_v2x, x="jerk", y="co2", ax=ax2, scatter=False)
-        ax2.set_title("CO2 vs Jerk (V2X)")
+        ax2.set_title("V2X")
+        ax2.set_xlabel("Jerk (m/s³)")
 
         plt.tight_layout()
-        plt.savefig(out_dir / "plot_co2_jerk_side_by_side.png", dpi=150)
+        plt.savefig(out_dir / "jerk_over_CO2.png", dpi=150)
         plt.close()
 
 def compute_stop_durations(df: pd.DataFrame) -> pd.DataFrame:
@@ -192,7 +201,7 @@ def plot_stop_duration_vs_speed(df: pd.DataFrame, out_dir: Path) -> None:
             line_kws={"lw": 2},
             ax=ax1,
         )
-        ax1.set_title("Stop Duration vs Avg Speed (Baseline)", style="italic")
+        ax1.set_title("Baseline", style="italic")
         ax1.set_xlabel("Average Speed (m/s)")
         ax1.set_ylabel("Total Time Spent Below 0.1 m/s")
 
@@ -214,7 +223,7 @@ def plot_stop_duration_vs_speed(df: pd.DataFrame, out_dir: Path) -> None:
             line_kws={"lw": 2},
             ax=ax2,
         )
-        ax2.set_title("Stop Duration vs Avg Speed (V2X)", style="italic")
+        ax2.set_title("V2X", style="italic")
         ax2.set_xlabel("Average Speed (m/s)")
         ax2.set_ylabel("")
 
@@ -224,7 +233,7 @@ def plot_stop_duration_vs_speed(df: pd.DataFrame, out_dir: Path) -> None:
         ax2.set_ylim(y_min, y_max)
 
         plt.tight_layout()
-        plt.savefig(out_dir / "plot_stop_duration_vs_speed_side_by_side.png", dpi=150)
+        plt.savefig(out_dir / "stop_duration_over_speed.png", dpi=150)
         plt.close()
 
 def main():
