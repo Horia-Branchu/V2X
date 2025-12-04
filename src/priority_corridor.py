@@ -11,8 +11,7 @@ from base_v2x_feature import BaseV2XFeature
 logger = logging.getLogger("v2x")
 
 PRIORITY_TYPE = "emergency"
-EMERGENCY_CORRIDOR_SCAN_DISTANCE = 120.0        # The distance in which the emergency corridor is scanned
-RETURN_DISTANCE = 120.0     # vehicles return to normal after EMERGENCY_CORRIDOR_SCAN_DISTANCE passed
+RETURN_DISTANCE = 120.0     # distance after which vehicles fully restore normal lane-change behavior
 LANE_FREE_DIST = 8.0        # how far a car must be from another to consider lane "free"
 MAX_BULK_COMMANDS_PER_STEP: int = 50   # avoid sending too many TraCI cmds
 
@@ -211,9 +210,6 @@ class PriorityCorridorFeature(BaseV2XFeature):
 
                 # Get distance between the emergency vehicle and the current vehicle
                 distance_sq = squared_distance(vehicle_position, priority_position)
-                # Too far → ignore
-                if distance_sq > EMERGENCY_CORRIDOR_SCAN_DISTANCE * EMERGENCY_CORRIDOR_SCAN_DISTANCE:
-                    continue
                 # If the emergency vehicle already passed far enough, restore normal behavior
                 if distance_sq > RETURN_DISTANCE * RETURN_DISTANCE:
                     try:
