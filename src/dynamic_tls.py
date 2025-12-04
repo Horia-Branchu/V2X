@@ -18,26 +18,38 @@ class DynamicTLS(BaseV2XFeature):
         self.feature_name = feature_name
         self.observation_size = 5       # dummy observation size
         self.action_size = 4            # Extend for NS/EW, switch or maintain
-        self.detection_range = None       # meters
-        self.extend_time = None            # seconds
+        self.detection_range = 50.0       # meters
+        self.extend_time = 5.0            # seconds
         self.tls_override_times = {}    # {tls_id: timestamp}
         self._tls_log_events = [] # per-step event buffer for compact TTY display or verbose non-TTY logs
         self.phase_time = 0
-        self.tls = traci.trafficlight.getIDList()
+        self._last_phase = {}
 
-        self.min_detection_range = 20
-        self.max_detection_range = 100
+        self.min_detection_range = 20.0
+        self.max_detection_range = 100.0
 
-        self.min_extend_time = 2
-        self.max_extend_time = 10
+        self.min_extend_time = 2.0
+        self.max_extend_time = 10.0
+
+        self.w_wait = 1.0
+        self.w_queue = 0.5
+        self.w_switch = 2.0
+
+        self._queue_clamp = 20
     
     def get_observation_space(self):
-        tls_count = len(self.tls)
-        return gym.spaces.Box(low=0, high=60, shape=(tls_count*self.observation_size,), dtype=np.float32)
+        tls_list = traci.trafficlight.getIDList()
+        tls_count = len(tls_list)
+        low = np.array([0.0]*(tls_count*self.observation_size), dtype=np.float32)
+        high = []
+        for _ in range(tls_count):
+            high.extend([self._queue_clamp,self._queue_clamp,self._queue_clamp,self._queue_clamp,60.0])
+        high = np.array(high, dtype=np.float32) if high else np.array([0.0], dtype=np.float32)
+        return gym.spaces.Box(low=low, high=high, shape=(tls_count*self.observation_size,), dtype=np.float32)
     
     def get_action_space(self):
         return gym.spaces.Dict({
-        "tl_action": Discrete(4),       # Extend NS, Extend EW, Maintain, Switch
+        "tl_action": Discrete(4),       
         "params": Box(low=0, high=1, shape=(2,), dtype=np.float32)
     })
 
@@ -188,32 +200,23 @@ class DynamicTLS(BaseV2XFeature):
 
         if tl_action == 0:
             if current_phase in [0, 1]:  
-                traci.trafficlight.setPhaseDuration(tls_id, self.extend_time)
-                self.spat_message_log(
-                    f"RL Action: Extending GREEN for TLS {tls_id} by {self.extend_time}s",
-                    event_type="EXTEND_GREEN",
-                )
+                traci.trafficlight.setPhaseDuration(tls_id, float(self.extend_time))
+
         elif tl_action == 1:
             if current_phase in [2, 3]:  
-                traci.trafficlight.setPhaseDuration(tls_id, self.extend_time) 
-                self.spat_message_log(
-                    f"RL Action: Extending GREEN for TLS {tls_id} by {self.extend_time}s",
-                    event_type="EXTEND_GREEN",
-                )  
+                traci.trafficlight.setPhaseDuration(tls_id, float(self.extend_time)) 
+
         elif tl_action == 2:
             pass  
         elif tl_action == 3:
             next_phase = (current_phase + 1) % phase_count
             traci.trafficlight.setPhase(tls_id, next_phase)
-            self.spat_message_log(
-                f"RL Action: Switching TLS {tls_id} to phase {next_phase}",
-                event_type="SWITCH_GREEN",
-            )
 
     def take_action(self, action):
         # clear per-step buffer
         self._tls_log_events.clear()
 
+        tls_list = traci.trafficlight.getIDList()
         rl_mode = isinstance(action, dict)
 
         if rl_mode:
@@ -222,15 +225,11 @@ class DynamicTLS(BaseV2XFeature):
 
             self.detection_range = (self.min_detection_range + float(alpha) * (self.max_detection_range - self.min_detection_range))
             self.extend_time = (self.min_extend_time + float(beta) * (self.max_extend_time - self.min_extend_time))
-        else:
-            tl_axtion = int(action)
-            self.detection_range = 50
-            self.extend_time = 5
-        
-        for tls_id in self.tls:
-            if rl_mode:
+            
+            for tls_id in tls_list:
                 self._appply_rl_action(tls_id, tl_axtion)
-            else:
+        else:
+            for tls_id in tls_list:
                 self.dynamic_tls(tls_id)
 
         # Emit aggregated output
@@ -240,8 +239,9 @@ class DynamicTLS(BaseV2XFeature):
        obs = []
 
        directions = ["N", "S", "E", "W"]
+       tls_list = traci.trafficlight.getIDList()
 
-       for tls_id in self.tls:
+       for tls_id in tls_list:
            lanes = traci.trafficlight.getControlledLanes(tls_id)
 
            groups = {d: [] for d in directions}
@@ -253,22 +253,74 @@ class DynamicTLS(BaseV2XFeature):
 
            for d in directions:
                q = sum(traci.lane.getLastStepVehicleNumber(l) for l in groups[d])
-               obs.append(min(q, 20))   
+               obs.append(min(q, self._queue_clamp))   
 
            elapsed = traci.trafficlight.getNextSwitch(tls_id) - traci.simulation.getTime()
-           elapsed = max(0, min(elapsed, 60))
+           elapsed = max(0.0, min(float(elapsed), 60.0))
            obs.append(elapsed)
+
+           if len(obs) == 0:
+               return np.array([0.0], dtype=np.float32 )
 
        return np.array(obs, dtype=np.float32)
 
     def calculate_reward(self):
+        tls_list = traci.trafficlight.getIDList()
         total_waiting = 0.0
+        total_queue = 0.0
+        switches = 0
+        bonus = 0.0
 
-        for v_id in traci.vehicle.getIDList():
-            total_waiting += traci.vehicle.getWaitingTime(v_id)
+        current_phase = {}
+        for tls_id in tls_list:
+            phase = traci.trafficlight.getPhase(tls_id)
+            current_phase[tls_id] = phase
+            last_phase = self._last_phase.get(tls_id, phase)
+            if phase != last_phase:
+                switches += 1
 
-        logger.debug(f"[{self.feature_name}] Reward: {total_waiting}")
-        return -total_waiting
+            detection_range = getattr(self, 'detection_range', self.detection_range)
+            lanes = traci.trafficlight.getControlledLanes(tls_id)
+            lane_queues = {}
+            for lane in lanes:
+                vehs = traci.lane.getLastStepVehicleIDs(lane)
+                halting_count = traci.lane.getLastStepHaltingNumber(lane)
+                total_queue += halting_count
+
+                lane_waiting = 0.0
+                for v in vehs:
+                    try:
+                        pos = traci.vehicle.getLanePosition(v)
+                        lane_len = traci.lane.getLength(lane)
+                        dist = max(0.0, lane_len - pos)
+                    except Exception:
+                        dist = 0.0
+
+                    if 0 <= dist <= detection_range:
+                        lane_waiting += traci.vehicle.getWaitingTime(v)
+
+                total_waiting += lane_waiting
+                lane_queues[lane] = halting_count
+
+            if lane_queues:
+                max_queue_lane = max(lane_queues, key=lane_queues.get)
+                min_queue_lane = min(lane_queues, key=lane_queues.get)
+                max_queue = lane_queues[max_queue_lane]
+                min_queue = lane_queues[min_queue_lane]
+
+                if self.is_lane_green(tls_id, max_queue_lane):
+                    bonus += 0.5 * max_queue  
+
+                elif self.is_lane_green(tls_id, min_queue_lane) and max_queue - min_queue > 5:
+                    bonus += 0.3 * max_queue  
+        
+        self._last_phase = current_phase
+
+        reward = -(self.w_wait * total_waiting + self.w_queue * total_queue + self.w_switch * switches) + bonus        
+        logger.debug(f"[{self.feature_name}] reward parts: "
+                     f"waiting = {total_waiting:.1f}, queue = {total_queue:.1f}, switches = {switches} "
+                     f"=> reward = {reward:.3f}")
+        return float(reward)
 
     def get_feature_name(self):
         return self.feature_name
@@ -289,8 +341,12 @@ class DynamicTLS(BaseV2XFeature):
                 logger.info(verbose)
 
     def feature_step(self):
-        # default behavior: don't spam the console for rule-based runs
-        logger.debug(f"[{self.feature_name}] Step completed")
+        det = getattr(self, "detection_range", self.detection_range)
+        ext = getattr(self, "extend_time", self.extend_time)
+        logger.debug(f"[{self.feature_name}] Step | detection_range={det:.1f}m extend_time={ext:.2f}s")
 
     def feature_reset(self):
+        self._tls_log_events.clear()
+        self._last_phases = {tls_id: traci.trafficlight.getPhase(tls_id) for tls_id in traci.trafficlight.getIDList()}
+        self.phase_time = 0
         logger.debug(f"[{self.feature_name}] Reset")
