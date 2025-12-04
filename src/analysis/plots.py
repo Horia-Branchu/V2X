@@ -5,6 +5,13 @@ import seaborn as sns
 from pathlib import Path
 from data_collector import vehicle_filename
 
+def enforce_features(df, x: str, y: str):
+    if x == y:
+        raise ValueError(f"Plotting '{x}' against itself is not allowed.")
+    for f in (x, y):
+        if f not in df.columns:
+            raise ValueError(f"Required feature '{f}' not found in dataset.")
+
 def find_latest_csv(root_dir: Path, filename=vehicle_filename):
     """Find vehicles.csv file within the project"""
     candidates = list(root_dir.rglob(filename))
@@ -31,9 +38,7 @@ def set_total_points(df, total_points, random_state=42):
 
 def plot_accel_vs_co2(df, out_dir):
     """Side-by-side accel vs CO2 plot."""
-
-    if not {"accel", "co2"}.issubset(df.columns):
-        return
+    enforce_features(df, "accel", "co2")
 
     df_filtered = df[df["co2"] > 1]
     df_base = df_filtered[df_filtered["run"] == "baseline"]
@@ -54,13 +59,17 @@ def plot_accel_vs_co2(df, out_dir):
         ax2.set_title("V2X")
         ax2.set_xlabel("Acceleration (m/s²)")
 
+        xmin = df_filtered["accel"].min()
+        xmax = df_filtered["accel"].max()
+        ax1.set_xlim(xmin, xmax)
+        ax2.set_xlim(xmin, xmax)
+
         plt.tight_layout()
         plt.savefig(out_dir / "acceleration_over_CO2.png", dpi=150)
         plt.close()
 
 def plot_speed_vs_co2(df, out_dir):
-    if not {"speed", "co2"}.issubset(df.columns):
-        return
+    enforce_features(df, "speed", "co2")
 
     df_filtered = df[df["co2"] > 1]
     df_base = df_filtered[df_filtered["run"] == "baseline"]
@@ -81,13 +90,17 @@ def plot_speed_vs_co2(df, out_dir):
         ax2.set_title("V2X")
         ax2.set_xlabel("Speed (m/s)")
 
+        xmin = df_filtered["speed"].min()
+        xmax = df_filtered["speed"].max()
+        ax1.set_xlim(xmin, xmax)
+        ax2.set_xlim(xmin, xmax)
+
         plt.tight_layout()
         plt.savefig(out_dir / "speed_over_CO2.png", dpi=150)
         plt.close()
 
 def plot_co2_vs_jerk(df, out_dir):
-    if not {"jerk", "co2"}.issubset(df.columns):
-        return
+    enforce_features(df, "jerk", "co2")
 
     df_filtered = df[df["co2"] > 1]
     df_base = df_filtered[df_filtered["run"] == "baseline"]
@@ -107,6 +120,11 @@ def plot_co2_vs_jerk(df, out_dir):
         sns.regplot(data=df_v2x, x="jerk", y="co2", ax=ax2, scatter=False)
         ax2.set_title("V2X")
         ax2.set_xlabel("Jerk (m/s³)")
+
+        xmin = df_filtered["jerk"].min()
+        xmax = df_filtered["jerk"].max()
+        ax1.set_xlim(xmin, xmax)
+        ax2.set_xlim(xmin, xmax)
 
         plt.tight_layout()
         plt.savefig(out_dir / "jerk_over_CO2.png", dpi=150)
