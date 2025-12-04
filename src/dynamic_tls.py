@@ -5,6 +5,7 @@ import sys
 import libsumo as traci
 from terminal_display import terminal_display
 from base_v2x_feature import BaseV2XFeature
+from gymnasium.spaces import Discrete, Box
 
 # feature-level logger; routine per-step data goes to DEBUG, important events should use INFO
 logger = logging.getLogger("v2x.features")
@@ -17,19 +18,28 @@ class DynamicTLS(BaseV2XFeature):
         self.feature_name = feature_name
         self.observation_size = 5       # dummy observation size
         self.action_size = 4            # Extend for NS/EW, switch or maintain
-        self.detection_range = 50       # meters
-        self.extend_time = 5            # seconds
+        self.detection_range = None       # meters
+        self.extend_time = None            # seconds
         self.tls_override_times = {}    # {tls_id: timestamp}
         self._tls_log_events = [] # per-step event buffer for compact TTY display or verbose non-TTY logs
         self.phase_time = 0
         self.tls = traci.trafficlight.getIDList()
+
+        self.min_detection_range = 20
+        self.max_detection_range = 100
+
+        self.min_extend_time = 2
+        self.max_extend_time = 10
     
     def get_observation_space(self):
         tls_count = len(self.tls)
         return gym.spaces.Box(low=0, high=60, shape=(tls_count*self.observation_size,), dtype=np.float32)
     
     def get_action_space(self):
-        return gym.spaces.Discrete(self.action_size)
+        return gym.spaces.Dict({
+        "tl_action": Discrete(4),       # Extend NS, Extend EW, Maintain, Switch
+        "params": Box(low=0, high=1, shape=(2,), dtype=np.float32)
+    })
 
     # Groups approaching vehicles by lane within the detection range
     def get_approaching_vehicles_by_lane(self, tls_id):
@@ -171,12 +181,57 @@ class DynamicTLS(BaseV2XFeature):
                             )
         return
     
+    def _appply_rl_action(self, tls_id, tl_action):
+        current_phase = traci.trafficlight.getPhase(tls_id)
+        logic = traci.trafficlight.getCompleteRedYellowGreenDefinition(tls_id)[0]
+        phase_count = len(logic.phases)
+
+        if tl_action == 0:
+            if current_phase in [0, 1]:  
+                traci.trafficlight.setPhaseDuration(tls_id, self.extend_time)
+                self.spat_message_log(
+                    f"RL Action: Extending GREEN for TLS {tls_id} by {self.extend_time}s",
+                    event_type="EXTEND_GREEN",
+                )
+        elif tl_action == 1:
+            if current_phase in [2, 3]:  
+                traci.trafficlight.setPhaseDuration(tls_id, self.extend_time) 
+                self.spat_message_log(
+                    f"RL Action: Extending GREEN for TLS {tls_id} by {self.extend_time}s",
+                    event_type="EXTEND_GREEN",
+                )  
+        elif tl_action == 2:
+            pass  
+        elif tl_action == 3:
+            next_phase = (current_phase + 1) % phase_count
+            traci.trafficlight.setPhase(tls_id, next_phase)
+            self.spat_message_log(
+                f"RL Action: Switching TLS {tls_id} to phase {next_phase}",
+                event_type="SWITCH_GREEN",
+            )
+
     def take_action(self, action):
         # clear per-step buffer
         self._tls_log_events.clear()
 
+        rl_mode = isinstance(action, dict)
+
+        if rl_mode:
+            tl_axtion = action["tl_action"]
+            alpha, beta = action["params"]
+
+            self.detection_range = (self.min_detection_range + float(alpha) * (self.max_detection_range - self.min_detection_range))
+            self.extend_time = (self.min_extend_time + float(beta) * (self.max_extend_time - self.min_extend_time))
+        else:
+            tl_axtion = int(action)
+            self.detection_range = 50
+            self.extend_time = 5
+        
         for tls_id in self.tls:
-            self.dynamic_tls(tls_id)
+            if rl_mode:
+                self._appply_rl_action(tls_id, tl_axtion)
+            else:
+                self.dynamic_tls(tls_id)
 
         # Emit aggregated output
         self._log_tls_events()
