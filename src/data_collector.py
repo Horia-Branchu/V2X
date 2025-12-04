@@ -7,8 +7,8 @@ vehicle_filename = "v2v.csv"
 
 class DataCollector:
     def __init__(self, batch_size=1000, reset_on_start=True):
-        src_dir = Path(__file__).resolve().parent
-        self.out_dir = src_dir / "data"
+        project_root = Path(__file__).resolve().parents[1]
+        self.out_dir = project_root / "data"
         self.batch_size = batch_size
         self.buffer = []
         # making the directory in a file named data

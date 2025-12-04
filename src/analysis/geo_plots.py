@@ -215,10 +215,8 @@ def compare_geo_plots(data_dir: Path):
 
 
 def main():
-    src_root = Path(__file__).resolve().parents[1]
-    project_root = src_root.parent
-
-    data_dir = src_root / "data"
+    project_root = Path(__file__).resolve().parents[2]
+    data_dir = project_root / "data"
 
     params_path = data_dir / vehicle_filename
     baseline_path = data_dir / f"{Path(vehicle_filename).stem}_baseline.csv"

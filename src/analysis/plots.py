@@ -228,7 +228,7 @@ def plot_stop_duration_vs_speed(df: pd.DataFrame, out_dir: Path) -> None:
         plt.close()
 
 def main():
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[2]
     csv_path = find_latest_csv(root, filename=vehicle_filename)
     if csv_path is None:
         print("No {vehicle_filename} file found.")

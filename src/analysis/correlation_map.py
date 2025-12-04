@@ -24,7 +24,7 @@ def find_latest_csv(root_dir: Path, filename=vehicle_filename):
 def main():
     """Generate a Pearson correlation heatmap without time and veh_id and save it"""
 
-    project_root = Path(__file__).resolve().parents[1]
+    project_root = Path(__file__).resolve().parents[2]
     csv_path = find_latest_csv(project_root, vehicle_filename)
 
     if not csv_path or not csv_path.exists():

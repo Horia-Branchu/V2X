@@ -81,9 +81,9 @@ def main():
         collector=baseline_collector
     )
 
-    src_dir = Path(__file__).resolve().parent
-    csv_path = src_dir / "data" / vehicle_filename
-    baseline_path = src_dir / "data" / f"{Path(vehicle_filename).stem}_baseline.csv"
+    project_root = Path(__file__).resolve().parents[1]
+    csv_path = project_root / "data" / vehicle_filename
+    baseline_path = project_root / "data" / f"{Path(vehicle_filename).stem}_baseline.csv"
     if csv_path.exists():
         csv_path.rename(baseline_path)
 
