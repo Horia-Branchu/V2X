@@ -64,7 +64,14 @@ def plot_accel_vs_co2(df, out_dir):
         ax1.set_xlim(xmin, xmax)
         ax2.set_xlim(xmin, xmax)
 
-        plt.tight_layout()
+        avg_base = df_base["co2"].mean()
+        avg_v2x = df_v2x["co2"].mean()
+        improvement = (avg_base - avg_v2x) / avg_base * 100
+
+        summary = f"V2X reduced average CO2 emissions by {improvement:.1f}% compared to baseline."
+        fig.text(0.5, 0.015, summary, ha='center', fontsize=12)
+
+        plt.tight_layout(rect=[0, 0.05, 1, 1])
         plt.savefig(out_dir / "acceleration_over_CO2.png", dpi=150)
         plt.close()
 
@@ -95,7 +102,14 @@ def plot_speed_vs_co2(df, out_dir):
         ax1.set_xlim(xmin, xmax)
         ax2.set_xlim(xmin, xmax)
 
-        plt.tight_layout()
+        avg_base = df_base["co2"].mean()
+        avg_v2x = df_v2x["co2"].mean()
+        improvement = (avg_base - avg_v2x) / avg_base * 100
+
+        summary = f"V2X reduced CO2 emissions by {improvement:.1f}% at comparable speeds."
+        fig.text(0.5, 0.015, summary, ha='center', fontsize=12)
+
+        plt.tight_layout(rect=[0, 0.05, 1, 1])
         plt.savefig(out_dir / "speed_over_CO2.png", dpi=150)
         plt.close()
 
@@ -126,7 +140,14 @@ def plot_co2_vs_jerk(df, out_dir):
         ax1.set_xlim(xmin, xmax)
         ax2.set_xlim(xmin, xmax)
 
-        plt.tight_layout()
+        var_base = df_base["jerk"].var()
+        var_v2x = df_v2x["jerk"].var()
+        improvement = (var_base - var_v2x) / var_base * 100
+
+        summary = f"V2X improved driving smoothness by {improvement:.1f}%, reducing jerk variability."
+        fig.text(0.5, 0.015, summary, ha='center', fontsize=12)
+
+        plt.tight_layout(rect=[0, 0.05, 1, 1])
         plt.savefig(out_dir / "jerk_over_CO2.png", dpi=150)
         plt.close()
 
@@ -250,7 +271,14 @@ def plot_stop_duration_vs_speed(df: pd.DataFrame, out_dir: Path) -> None:
         ax1.set_ylim(y_min, y_max)
         ax2.set_ylim(y_min, y_max)
 
-        plt.tight_layout()
+        mean_base = base_data["total_st_time"].mean()
+        mean_v2x = v2x_data["total_st_time"].mean()
+        improvement = (mean_base - mean_v2x) / mean_base * 100
+
+        summary = f"V2X reduced total stop time by {improvement:.1f}% compared to baseline."
+        fig.text(0.5, 0.015, summary, ha='center', fontsize=12)
+
+        plt.tight_layout(rect=[0, 0.05, 1, 1])
         plt.savefig(out_dir / "stop_duration_over_speed.png", dpi=150)
         plt.close()
 
