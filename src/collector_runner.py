@@ -76,6 +76,15 @@ def main():
          raise ValueError(f"\nNo v2x features enabled\n"
          "At least one of --bsm --tls --priority --reroute must be true")
 
+    project_root = Path(__file__).resolve().parents[1]
+    csv_path = project_root / "data" / vehicle_filename
+    baseline_path = project_root / "data" / f"{Path(vehicle_filename).stem}_baseline.csv"
+    # Ensuring baseline and v2x files do not exist
+    if baseline_path.exists():
+        raise ValueError(f"\nBaseline file exists.Delete {baseline_path} before rerunning")
+    elif csv_path.exists():
+        raise ValueError(f"\nV2X file exists.Delete {csv_path} before rerunning")
+
     baseline_collector = DataCollector(batch_size=1000, reset_on_start=True)
     run_once(
         config_path=cfg,
@@ -85,9 +94,6 @@ def main():
         collector=baseline_collector
     )
 
-    project_root = Path(__file__).resolve().parents[1]
-    csv_path = project_root / "data" / vehicle_filename
-    baseline_path = project_root / "data" / f"{Path(vehicle_filename).stem}_baseline.csv"
     if csv_path.exists():
         csv_path.rename(baseline_path)
 
