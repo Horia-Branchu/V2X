@@ -1,6 +1,7 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
+import argparse
 
 from pathlib import Path
 from data_collector import vehicle_filename
@@ -24,14 +25,28 @@ def find_latest_csv(root_dir: Path, filename=vehicle_filename):
 
 def set_total_points(df, total_points, random_state=42):
     """There are too many plots to be plotted in a short time so we set samples"""
-    if len(df) > total_points:
+    if len(df) >= total_points:
         print(f"Sampling from {len(df)} to {total_points} for plotting")
-        df_sampled = df.sample(n=total_points, random_state=random_state)
         # Proving distribution between baseline and v2x is equal
         if "run" in df.columns:
             print("Distribution before sampling:", df["run"].value_counts().to_dict())
+            #Find the size of the smallest class (baseline or v2x)
+            smallest_class = df["run"].value_counts().min()
+            max_allowed = 2 * smallest_class
+            #Checking the max number of points
+            if total_points > max_allowed:
+                raise ValueError(
+                    f"total points = {total_points} exceeds the maximum allowed {max_allowed}"
+                    f"(=2 baseline class size {smallest_class})"
+                )
+            # Balanced stratification
+            limit = min(smallest_class, total_points//2)
+            df_sampled = df.groupby("run").sample(n=limit, random_state=random_state)
+
             print("Distribution after sampling:", df_sampled["run"].value_counts().to_dict())
-        return df_sampled
+            return df_sampled
+
+        raise ValueError(f"Column run is missing. Please make sure run column exists")
     else:
         return df
 
@@ -282,7 +297,7 @@ def plot_stop_duration_vs_speed(df: pd.DataFrame, out_dir: Path) -> None:
         plt.savefig(out_dir / "stop_duration_over_speed.png", dpi=150)
         plt.close()
 
-def main():
+def main(max_points):
     root = Path(__file__).resolve().parents[2]
     csv_path = find_latest_csv(root, filename=vehicle_filename)
     if csv_path is None:
@@ -306,7 +321,7 @@ def main():
         print(f"Using dataset: {csv_path}\n"
               f"(No {baseline_path.name} found, plotting single run.)")
 
-    df_sampled = set_total_points(df, total_points=200000)
+    df_sampled = set_total_points(df, total_points=max_points)
 
     plot_accel_vs_co2(df_sampled, out_dir)
     plot_speed_vs_co2(df_sampled, out_dir)
@@ -316,4 +331,12 @@ def main():
     print("All plots are done")
 
 if __name__ == "__main__":
-    main()
+    #Initialize parser for no. of sampled points
+    parser = argparse.ArgumentParser(description="Run plots with custom sampling")
+    parser.add_argument("--max-points",
+                        type=int,
+                        default=2000000,
+                        help="Maximum number of sampled points used in plotting"
+)
+    args = parser.parse_args()
+    main(args.max_points)
