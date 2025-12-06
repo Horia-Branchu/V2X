@@ -1,5 +1,7 @@
 import libsumo as traci
 import logging
+import argparse
+import sys
 
 from pathlib import Path
 from simulation_runner import SimulationRunner
@@ -69,6 +71,17 @@ def run_once(config_path: str, steps: int | None, gui: bool,
     runner.start_simulation()
 
 def main():
+    #Extend argument parsing to include max points
+    temp_parser = argparse.ArgumentParser(add_help=False)
+    temp_parser.add_argument(
+        "--max-points",
+        type=int,
+        default=200000,
+        help="Maximum number of sampled points used in plotting"
+    )
+    local_args, remained_argv = temp_parser.parse_known_args()
+    max_points = local_args.max_points
+    sys.argv = [sys.argv[0]] + remained_argv
     args = SimulationRunner.parse_arguments()
     cfg = resolve_config()
 
@@ -85,7 +98,7 @@ def main():
     elif csv_path.exists():
         raise ValueError(f"\nV2X file exists.Delete {csv_path} before rerunning")
 
-    baseline_collector = DataCollector(batch_size=1000, reset_on_start=True)
+    baseline_collector = DataCollector(batch_size=10000, reset_on_start=True)
     run_once(
         config_path=cfg,
         steps=args.steps,
@@ -97,7 +110,7 @@ def main():
     if csv_path.exists():
         csv_path.rename(baseline_path)
 
-    params_collector = DataCollector(batch_size=1000, reset_on_start=True)
+    params_collector = DataCollector(batch_size=10000, reset_on_start=True)
     run_once(
         config_path=cfg,
         steps=args.steps,
@@ -107,7 +120,7 @@ def main():
     )
 
     print(f"\n\n\nGenerating Plots")
-    plots.main()
+    plots.main(max_points=max_points)
     correlation_map.main()
     geo_plots.main()
     print(f"All plots generated successfully")
