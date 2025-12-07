@@ -3,7 +3,7 @@ import libsumo as traci
 from pathlib import Path
 
 # global definition
-vehicle_filename = "v2v.csv"
+vehicle_filename = "v2v.parquet"
 
 class DataCollector:
     def __init__(self, batch_size=1000, reset_on_start=True):
@@ -70,8 +70,6 @@ class DataCollector:
 
         if len(frame) > 0:
             self.buffer.extend(frame)
-            if len(self.buffer) >= self.batch_size:
-                self.flush()
 
     def flush(self):
         """Save buffered data"""
@@ -79,7 +77,5 @@ class DataCollector:
             return None
 
         df = pd.DataFrame(self.buffer)
-        write_header = not self.csv_path.exists()
-
-        df.to_csv(self.csv_path, mode="a", index=False, header=write_header)
+        df.to_parquet(self.csv_path,index=False)
         self.buffer = []

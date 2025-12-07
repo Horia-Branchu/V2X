@@ -7,8 +7,8 @@ from pathlib import Path
 from data_collector import vehicle_filename
 
 
-def find_latest_csv(root_dir: Path, filename=vehicle_filename):
-    """Search for the newest matching CSV in the project folder"""
+def find_latest_file(root_dir: Path, filename=vehicle_filename):
+    """Search for the newest matching file in the project folder"""
 
     print(f"Correlation Map for {root_dir}\n"
           f"Correlation Map is generating")
@@ -25,14 +25,14 @@ def main():
     """Generate a Pearson correlation heatmap without time and veh_id and save it"""
 
     project_root = Path(__file__).resolve().parents[2]
-    csv_path = find_latest_csv(project_root, vehicle_filename)
+    parquet_path = find_latest_file(project_root, vehicle_filename)
 
-    if not csv_path or not csv_path.exists():
+    if not parquet_path or not parquet_path.exists():
         print(f"Could not find any {vehicle_filename} in the project"
               "Run the simulation first so DataCollector generates it")
         return None
 
-    df = pd.read_csv(csv_path,low_memory=False)
+    df = pd.read_parquet(parquet_path)
     num_df = df.select_dtypes(include=np.number)
     if num_df.empty:
         print("No numeric columns found for correlation")
@@ -56,7 +56,7 @@ def main():
     )
     plt.title("Feature Correlation Map with CO2 Consumption", fontsize=14, pad=12)
     plt.tight_layout()
-    output_path = csv_path.parent / "co2_correlation_map.png"
+    output_path = parquet_path.parent / "co2_correlation_map.png"
     plt.savefig(output_path, dpi=150)
     print("Done")
 

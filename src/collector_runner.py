@@ -34,6 +34,8 @@ class RunnerWithCollector(SimulationRunner):
         except traci.exceptions.FatalTraCIError as e:
             logger.error(f"Fatal TraCI error occurred. Ending simulation: {e}")
 
+        self.collector.flush()
+
     def run_with_steps(self):
         for step in range(self.simulation_steps):
             self.env.step(0)
@@ -90,15 +92,15 @@ def main():
          "At least one of --bsm --tls --priority --reroute must be true")
 
     project_root = Path(__file__).resolve().parents[1]
-    csv_path = project_root / "data" / vehicle_filename
-    baseline_path = project_root / "data" / f"{Path(vehicle_filename).stem}_baseline.csv"
+    parquet_path = project_root / "data" / vehicle_filename
+    baseline_path = project_root / "data" / f"{Path(vehicle_filename).stem}_baseline.parquet"
     # Ensuring baseline and v2x files do not exist
     if baseline_path.exists():
         raise ValueError(f"\nBaseline file exists.Delete {baseline_path} before rerunning")
-    elif csv_path.exists():
-        raise ValueError(f"\nV2X file exists.Delete {csv_path} before rerunning")
+    elif parquet_path.exists():
+        raise ValueError(f"\nV2X file exists.Delete {parquet_path} before rerunning")
 
-    baseline_collector = DataCollector(batch_size=10000, reset_on_start=True)
+    baseline_collector = DataCollector(reset_on_start=True)
     run_once(
         config_path=cfg,
         steps=args.steps,
@@ -107,10 +109,10 @@ def main():
         collector=baseline_collector
     )
 
-    if csv_path.exists():
-        csv_path.rename(baseline_path)
+    if parquet_path.exists():
+        parquet_path.rename(baseline_path)
 
-    params_collector = DataCollector(batch_size=10000, reset_on_start=True)
+    params_collector = DataCollector(reset_on_start=True)
     run_once(
         config_path=cfg,
         steps=args.steps,

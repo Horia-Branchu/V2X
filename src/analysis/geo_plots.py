@@ -19,8 +19,8 @@ def find_latest(root_dir: Path, pattern: str):
     return candidates[0]
 
 
-def find_latest_csv(root_dir: Path, filename=vehicle_filename):
-    """Find latest CSV within the project (same behavior as plots.py)."""
+def find_latest_file(root_dir: Path, filename=vehicle_filename):
+    """Find latest file within the project (same behavior as plots.py)."""
     return find_latest(root_dir, filename)
 
 
@@ -166,10 +166,10 @@ def plot_min_speed_map(
     logger.info(f"Saved geographic plot to: {out_path}")
 
 
-def generate_geo_plot(csv_path: Path, sumo_cfg_path: Path, output_name: str):
-    """load CSV and generate a geographic min-speed plot."""
-    df = pd.read_csv(csv_path, low_memory=False)
-    out_dir = csv_path.parent
+def generate_geo_plot(parquet_path: Path, sumo_cfg_path: Path, output_name: str):
+    """load parquet and generate a geographic min-speed plot."""
+    df = pd.read_parquet(parquet_path)
+    out_dir = parquet_path.parent
     out_path = out_dir / output_name
 
     plot_min_speed_map(
@@ -219,7 +219,7 @@ def main():
     data_dir = project_root / "data"
 
     params_path = data_dir / vehicle_filename
-    baseline_path = data_dir / f"{Path(vehicle_filename).stem}_baseline.csv"
+    baseline_path = data_dir / f"{Path(vehicle_filename).stem}_baseline.parquet"
 
     sumo_cfg_path = project_root / "config" / "simulation.sumocfg"
     if not sumo_cfg_path.exists():
@@ -229,7 +229,7 @@ def main():
         return
 
     print(f"Using SUMO config: {sumo_cfg_path}")
-    print(f"Looking for CSVs in: {data_dir}")
+    print(f"Looking for parquet files in: {data_dir}")
 
     if params_path.exists():
         print("Generating geographic plot for V2X run...")
@@ -241,7 +241,7 @@ def main():
         print("Generating geographic plot for BASELINE run...")
         generate_geo_plot(baseline_path, sumo_cfg_path, "min_speed_baseline.png")
     else:
-        print(f"No {Path(vehicle_filename).stem}_baseline.csv found — skipping baseline plot")
+        print(f"No {Path(vehicle_filename).stem}_baseline.parquet found — skipping baseline plot")
 
     if params_path.exists() and baseline_path.exists():
         try:

@@ -2,9 +2,11 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 import argparse
+import matplotlib
 
 from pathlib import Path
 from data_collector import vehicle_filename
+from multiprocessing import get_context
 
 def enforce_features(df, x: str, y: str):
     if x == y:
@@ -13,8 +15,8 @@ def enforce_features(df, x: str, y: str):
         if f not in df.columns:
             raise ValueError(f"Required feature '{f}' not found in dataset.")
 
-def find_latest_csv(root_dir: Path, filename=vehicle_filename):
-    """Find vehicles.csv file within the project"""
+def find_latest_file(root_dir: Path, filename=vehicle_filename):
+    """Find the data file within the project"""
     candidates = list(root_dir.rglob(filename))
     if len(candidates) == 0:
         return None
@@ -297,35 +299,40 @@ def plot_stop_duration_vs_speed(df: pd.DataFrame, out_dir: Path) -> None:
         plt.savefig(out_dir / "stop_duration_over_speed.png", dpi=150)
         plt.close()
 
+def _plot_worker(plot_func, df, out_dir):
+    matplotlib.use("Agg")  # required for multiprocessing
+    plot_func(df, out_dir)
+
+
 def main(max_points):
     root = Path(__file__).resolve().parents[2]
-    csv_path = find_latest_csv(root, filename=vehicle_filename)
-    if csv_path is None:
+    parquet_path = find_latest_file(root, filename=vehicle_filename)
+    if parquet_path is None:
         print("No {vehicle_filename} file found.")
         return
 
-    out_dir = csv_path.parent
-    baseline_path = out_dir / f"{Path(vehicle_filename).stem}_baseline.csv"
+    out_dir = parquet_path.parent
+    baseline_path = out_dir / f"{Path(vehicle_filename).stem}_baseline.parquet"
 
-    df_v2x = pd.read_csv(csv_path, low_memory=False)
+    df_v2x = pd.read_parquet(parquet_path)
     df_v2x["run"] = "v2x"
 
     if baseline_path.exists():
-        df_baseline = pd.read_csv(baseline_path, low_memory=False)
+        df_baseline = pd.read_parquet(baseline_path)
         df_baseline["run"] = "baseline"
         df = pd.concat([df_baseline, df_v2x], ignore_index=True)
-        print(f"Using dataset: {csv_path} + baseline at {baseline_path}\n"
+        print(f"Using dataset: {parquet_path} + baseline at {baseline_path}\n"
               f"Generating comparison plots (baseline vs v2x)")
     else:
         df = df_v2x
-        print(f"Using dataset: {csv_path}\n"
+        print(f"Using dataset: {parquet_path}\n"
               f"(No {baseline_path.name} found, plotting single run.)")
 
     df_sampled = set_total_points(df, total_points=max_points)
 
     plot_accel_vs_co2(df_sampled, out_dir)
     plot_speed_vs_co2(df_sampled, out_dir)
-    plot_co2_vs_jerk(df_sampled,out_dir)
+    plot_co2_vs_jerk(df_sampled, out_dir)
     plot_stop_duration_vs_speed(df_sampled, out_dir)
 
     print("All plots are done")
