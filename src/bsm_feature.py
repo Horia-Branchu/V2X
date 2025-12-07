@@ -118,6 +118,91 @@ class BSMFeature(BaseV2XFeature):
             f"brake_duration={self.brake_duration_s:.2f}s"
         )
 
+    def _get_at_risk_vehicle_pairs(self):
+        at_risk_pairs = []
+        current_time_s = traci.simulation.getTime()
+        
+        for vehicle_id in traci.vehicle.getIDList():
+            leader_data = traci.vehicle.getLeader(vehicle_id, dist=self.max_react_gap_m)
+            if not leader_data:
+                continue
+
+            leader_id, distance_to_leader_m = leader_data
+            if leader_id is None or distance_to_leader_m < 0 or distance_to_leader_m > self.max_react_gap_m:
+                continue
+
+            try:
+                follower_speed_mps = traci.vehicle.getSpeed(vehicle_id)
+                leader_speed_mps = traci.vehicle.getSpeed(leader_id)
+                leader_accel_mps2 = traci.vehicle.getAcceleration(leader_id)
+            except traci.TraCIException:
+                continue
+
+            relative_speed_mps = max(0.0, follower_speed_mps - leader_speed_mps)
+            time_to_collision_s = (
+                distance_to_leader_m / relative_speed_mps if relative_speed_mps > 1e-3 else float("inf")
+            )
+
+            gap_trigger = (distance_to_leader_m < self.min_gap)
+            time_to_collision_trigger = (
+                distance_to_leader_m <= self.max_time_to_collision_gap_m
+                and time_to_collision_s < self.time_to_collision_threshold_s
+            )
+            decel_trigger = (
+                distance_to_leader_m <= self.max_decel_gap_m
+                and leader_accel_mps2 <= self.leader_decel_threshold_mps2
+            )
+
+            should_brake = gap_trigger or time_to_collision_trigger or decel_trigger
+
+            # Check brake interval
+            last_brake_time = self._last_brake_step.get(vehicle_id, self.DEFAULT_LAST_BRAKE_TIME)
+            if should_brake and (current_time_s - last_brake_time) >= self.MIN_BRAKE_INTERVAL_S:
+                at_risk_pairs.append((vehicle_id, leader_id, distance_to_leader_m, time_to_collision_s))
+        
+        return at_risk_pairs
+
+    def _apply_rl_action(self, bsm_action):
+        if not self.enable:
+            return
+        
+        # Collect at-risk vehicle pairs
+        at_risk_pairs = self._get_at_risk_vehicle_pairs()
+        
+        current_time_s = traci.simulation.getTime()
+        
+        if bsm_action == 0:  # Emergency brake
+            for follower_id, leader_id, gap, ttc in at_risk_pairs:
+                self._emergency_brake_count += 1
+                try:
+                    traci.vehicle.slowDown(follower_id, 0.0, self.brake_duration_s)
+                    self._last_brake_step[follower_id] = current_time_s
+                    logger.debug(
+                        f"[{self.feature_name}] RL EMERGENCY_BRAKE: {follower_id} -> {leader_id} "
+                        f"(gap={gap:.1f}m, ttc={ttc:.2f}s)"
+                    )
+                except traci.TraCIException as e:
+                    logger.warning(f"[{self.feature_name}] Emergency brake failed for {follower_id}: {e}")
+        
+        elif bsm_action == 1:  # Preemptive slowdown
+            for follower_id, leader_id, gap, ttc in at_risk_pairs:
+                self._slowdown_count += 1
+                try:
+                    current_speed = traci.vehicle.getSpeed(follower_id)
+                    target_speed = max(0.0, current_speed * self.PREEMPTIVE_SLOWDOWN_FACTOR)
+                    traci.vehicle.slowDown(follower_id, target_speed, self.brake_duration_s)
+                    self._last_brake_step[follower_id] = current_time_s
+                    logger.debug(
+                        f"[{self.feature_name}] RL PREEMPTIVE_SLOWDOWN: {follower_id} -> {leader_id} "
+                        f"(gap={gap:.1f}m, ttc={ttc:.2f}s, target={target_speed:.2f}m/s)"
+                    )
+                except traci.TraCIException as e:
+                    logger.warning(f"[{self.feature_name}] Preemptive slowdown failed for {follower_id}: {e}")
+        
+        elif bsm_action == 2:  # No intervention
+            logger.debug(f"[{self.feature_name}] RL NO_INTERVENTION: {len(at_risk_pairs)} at-risk pairs")
+            pass
+
     def _log_bsm_events(self, events: dict):
         any_events = any(len(v) for v in events.values())
         if not any_events:
