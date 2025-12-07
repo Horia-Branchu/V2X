@@ -2,11 +2,9 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 import argparse
-import matplotlib
 
 from pathlib import Path
 from data_collector import vehicle_filename
-from multiprocessing import get_context
 
 def enforce_features(df, x: str, y: str):
     if x == y:
@@ -298,11 +296,6 @@ def plot_stop_duration_vs_speed(df: pd.DataFrame, out_dir: Path) -> None:
         plt.tight_layout(rect=[0, 0.05, 1, 1])
         plt.savefig(out_dir / "stop_duration_over_speed.png", dpi=150)
         plt.close()
-
-def _plot_worker(plot_func, df, out_dir):
-    matplotlib.use("Agg")  # required for multiprocessing
-    plot_func(df, out_dir)
-
 
 def main(max_points):
     root = Path(__file__).resolve().parents[2]
