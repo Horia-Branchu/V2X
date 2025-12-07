@@ -12,7 +12,7 @@ class DataCollector:
         self.buffer = []
         # making the directory in a file named data
         self.out_dir.mkdir(parents=True, exist_ok=True)
-        self.csv_path = self.out_dir / vehicle_filename
+        self.parquet_path = self.out_dir / vehicle_filename
         # dict for feature engineering
         self.prev_accel = {}
         self.prev_time = {}
@@ -20,9 +20,9 @@ class DataCollector:
         self.stops = {}
 
         """Reset file each time the program starts
-           CLOSE THE CSV FILE IF IT'S OPENED BEFORE RERUNNING"""
-        if reset_on_start and self.csv_path.exists():
-            self.csv_path.unlink()
+           CLOSE THE parquet FILE IF IT'S OPENED BEFORE RERUNNING"""
+        if reset_on_start and self.parquet_path.exists():
+            self.parquet_path.unlink()
 
     # typevar is important to be specified in this method
     def collect(self, time: float):
@@ -76,5 +76,5 @@ class DataCollector:
             return None
 
         df = pd.DataFrame(self.buffer)
-        df.to_parquet(self.csv_path,index=False)
+        df.to_parquet(self.parquet_path,index=False)
         self.buffer = []
