@@ -220,14 +220,14 @@ class DynamicTLS(BaseV2XFeature):
         rl_mode = isinstance(action, dict)
 
         if rl_mode:
-            tl_axtion = action["tl_action"]
+            tl_action = action["tl_action"]
             alpha, beta = action["params"]
 
             self.detection_range = (self.min_detection_range + float(alpha) * (self.max_detection_range - self.min_detection_range))
             self.extend_time = (self.min_extend_time + float(beta) * (self.max_extend_time - self.min_extend_time))
             
             for tls_id in tls_list:
-                self._appply_rl_action(tls_id, tl_axtion)
+                self._appply_rl_action(tls_id, tl_action)
         else:
             for tls_id in tls_list:
                 self.dynamic_tls(tls_id)
