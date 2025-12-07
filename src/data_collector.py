@@ -6,10 +6,9 @@ from pathlib import Path
 vehicle_filename = "v2v.parquet"
 
 class DataCollector:
-    def __init__(self, batch_size=1000, reset_on_start=True):
+    def __init__(self, reset_on_start=True):
         project_root = Path(__file__).resolve().parents[1]
         self.out_dir = project_root / "data"
-        self.batch_size = batch_size
         self.buffer = []
         # making the directory in a file named data
         self.out_dir.mkdir(parents=True, exist_ok=True)
