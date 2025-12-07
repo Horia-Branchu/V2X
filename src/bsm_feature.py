@@ -73,10 +73,145 @@ class BSMFeature(BaseV2XFeature):
         })
 
     def get_observation(self) -> np.ndarray:
-        return np.zeros(self.observation_size, dtype=np.float32)
+        # Handle disabled feature or empty vehicle list
+        if not self.enable:
+            return np.zeros(5, dtype=np.float32)
+        
+        vehicle_ids = traci.vehicle.getIDList()
+        if len(vehicle_ids) == 0:
+            return np.zeros(5, dtype=np.float32)
+        
+        # Collect metrics across all vehicle pairs
+        vehicle_pair_count = 0
+        total_gap = 0.0
+        total_rel_speed = 0.0
+        total_ttc = 0.0
+        
+        for vehicle_id in vehicle_ids:
+            # Get leader data within detection range
+            leader_data = traci.vehicle.getLeader(vehicle_id, dist=self.max_react_gap_m)
+            if not leader_data:
+                continue
+            
+            leader_id, gap = leader_data
+            if leader_id is None or gap < 0:
+                continue
+            
+            try:
+                follower_speed = traci.vehicle.getSpeed(vehicle_id)
+                leader_speed = traci.vehicle.getSpeed(leader_id)
+            except traci.TraCIException:
+                continue
+            
+            # Calculate relative speed (only positive, approaching)
+            rel_speed = max(0.0, follower_speed - leader_speed)
+            
+            # Calculate time to collision
+            if rel_speed > 1e-3:
+                ttc = gap / rel_speed
+            else:
+                ttc = float('inf')
+            
+            # Accumulate metrics
+            vehicle_pair_count += 1
+            total_gap += gap
+            total_rel_speed += rel_speed
+            # Clamp TTC to 10.0 for averaging purposes
+            total_ttc += min(ttc, 10.0)
+        
+        # Calculate averages
+        if vehicle_pair_count > 0:
+            avg_gap_distance = total_gap / vehicle_pair_count
+            avg_relative_speed = total_rel_speed / vehicle_pair_count
+            avg_time_to_collision = total_ttc / vehicle_pair_count
+        else:
+            avg_gap_distance = 0.0
+            avg_relative_speed = 0.0
+            avg_time_to_collision = 0.0
+        
+        # Return observation array with shape (5,) and dtype float32
+        observation = np.array([
+            float(vehicle_pair_count),
+            avg_gap_distance,
+            avg_relative_speed,
+            avg_time_to_collision,
+            float(self._emergency_brake_count)
+        ], dtype=np.float32)
+        
+        logger.debug(
+            f"[{self.feature_name}] Observation: pairs={vehicle_pair_count}, "
+            f"avg_gap={avg_gap_distance:.2f}m, avg_rel_speed={avg_relative_speed:.2f}m/s, "
+            f"avg_ttc={avg_time_to_collision:.2f}s, brakes={self._emergency_brake_count}"
+        )
+        
+        return observation
 
     def calculate_reward(self) -> float:
-        return 0.0
+        # Return 0.0 if feature disabled or no vehicles
+        if not self.enable:
+            return 0.0
+        
+        vehicle_ids = traci.vehicle.getIDList()
+        if len(vehicle_ids) == 0:
+            return 0.0
+        
+        # Initialize reward components
+        total_ttc_penalty = 0.0
+        critical_ttc_count = 0
+        safe_gap_bonus = 0.0
+        
+        # Iterate through vehicle pairs and collect TTC values
+        for vehicle_id in vehicle_ids:
+            leader_data = traci.vehicle.getLeader(vehicle_id, dist=self.max_react_gap_m)
+            if not leader_data:
+                continue
+            
+            leader_id, gap = leader_data
+            if leader_id is None or gap < 0:
+                continue
+            
+            try:
+                follower_speed = traci.vehicle.getSpeed(vehicle_id)
+                leader_speed = traci.vehicle.getSpeed(leader_id)
+            except traci.TraCIException:
+                continue
+            
+            # Calculate relative speed (only positive, approaching)
+            rel_speed = max(0.0, follower_speed - leader_speed)
+            
+            # Calculate time to collision
+            if rel_speed > 1e-3:
+                ttc = gap / rel_speed
+            else:
+                ttc = float('inf')
+            
+            # Penalize low TTC values (below threshold)
+            if ttc < self.time_to_collision_threshold_s:
+                total_ttc_penalty += (self.time_to_collision_threshold_s - ttc)
+                # Count critical TTC situations
+                critical_ttc_count += 1
+            
+            # Reward safe following distances (gap > 2 * min_gap)
+            if gap > self.min_gap * 2:
+                safe_gap_bonus += 0.1
+        
+        # Compute weighted sum of reward components
+        reward = (
+            -self.w_ttc * total_ttc_penalty
+            - self.w_brake * (self._emergency_brake_count + self._slowdown_count * 0.5)
+            - self.w_critical * critical_ttc_count
+            + self.w_safe * safe_gap_bonus
+        )
+        
+        # Add debug logging for reward breakdown
+        logger.debug(
+            f"[{self.feature_name}] reward: ttc_penalty={total_ttc_penalty:.2f}, "
+            f"brakes={self._emergency_brake_count}, slowdowns={self._slowdown_count}, "
+            f"critical={critical_ttc_count}, safe_bonus={safe_gap_bonus:.2f}, "
+            f"total={reward:.3f}"
+        )
+        
+        return float(reward)
 
     def get_feature_name(self) -> str:
         return self.feature_name
@@ -245,6 +380,49 @@ class BSMFeature(BaseV2XFeature):
         if not self.enable:
             return
 
+        # Clear per-step metric counters at start of each step
+        self._emergency_brake_count = 0
+        self._slowdown_count = 0
+        self._critical_ttc_count = 0
+
+        # Mode detection: check if action is a dictionary (RL mode) or not (rule-based mode)
+        rl_mode = False
+        try:
+            rl_mode = isinstance(action, dict)
+            if rl_mode:
+                # Validate dictionary structure
+                if "bsm_action" not in action or "params" not in action:
+                    logger.warning(
+                        f"[{self.feature_name}] Invalid action dict (missing keys), using rule-based mode"
+                    )
+                    rl_mode = False
+        except Exception as e:
+            logger.warning(
+                f"[{self.feature_name}] Action processing error: {e}, using rule-based mode"
+            )
+            rl_mode = False
+
+        # RL Mode: extract components and apply RL methods
+        if rl_mode:
+            try:
+                bsm_action = action["bsm_action"]
+                params = action["params"]
+                
+                logger.debug(
+                    f"[{self.feature_name}] RL mode: action={bsm_action}, params={params}"
+                )
+                
+                # Apply RL parameters and action
+                self._apply_rl_parameters(params)
+                self._apply_rl_action(bsm_action)
+                return
+            except Exception as e:
+                logger.warning(
+                    f"[{self.feature_name}] RL action execution failed: {e}, falling back to rule-based mode"
+                )
+                # Fall through to rule-based mode
+
+        # Rule-Based Mode: use existing heuristic logic
         current_time_s = traci.simulation.getTime()
         
         events = {
@@ -347,6 +525,11 @@ class BSMFeature(BaseV2XFeature):
 
     def feature_reset(self):
         self._last_brake_step.clear()
+        # Clear RL metric counters
+        self._emergency_brake_count = 0
+        self._slowdown_count = 0
+        self._critical_ttc_count = 0
+        logger.debug(f"[{self.feature_name}] Feature reset: cleared brake history and RL metrics")
 
     # the distance growing is there for when theh gap between cars is rather small but currently growing so there's no risk of collision
 
