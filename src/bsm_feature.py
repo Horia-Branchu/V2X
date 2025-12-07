@@ -35,15 +35,42 @@ class BSMFeature(BaseV2XFeature):
         self.max_time_to_collision_gap_m = float(max_time_to_collision_gap_m)
         self.max_decel_gap_m = float(max_decel_gap_m)
 
-        self.observation_size = 3
+        # RL parameter bounds
+        self.min_detection_range = 20.0
+        self.max_detection_range = 100.0
+        self.min_ttc_threshold = 0.5
+        self.max_ttc_threshold = 3.0
+        self.min_brake_duration = 0.5
+        self.max_brake_duration = 2.0
+
+        # Per-step metric counters for reward calculation
+        self._emergency_brake_count = 0
+        self._slowdown_count = 0
+        self._critical_ttc_count = 0
+
+        # Reward component weights
+        self.w_ttc = 2.0
+        self.w_brake = 0.5
+        self.w_critical = 5.0
+        self.w_safe = 0.2
+
+        self.observation_size = 5
         self.action_size = 1
         self._last_brake_step = {}
 
     def get_observation_space(self) -> gym.Space:
-        return gym.spaces.Box(low=0.0, high=1.0, shape=(self.observation_size,))
+        return gym.spaces.Box(
+            low=np.array([0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float32),
+            high=np.array([100.0, 200.0, 50.0, 10.0, 100.0], dtype=np.float32),
+            shape=(5,),
+            dtype=np.float32
+        )
 
     def get_action_space(self) -> gym.Space:
-        return gym.spaces.Discrete(self.action_size)
+        return gym.spaces.Dict({
+            "bsm_action": gym.spaces.Discrete(3),
+            "params": gym.spaces.Box(low=0.0, high=1.0, shape=(3,), dtype=np.float32)
+        })
 
     def get_observation(self) -> np.ndarray:
         return np.zeros(self.observation_size, dtype=np.float32)
@@ -53,6 +80,43 @@ class BSMFeature(BaseV2XFeature):
 
     def get_feature_name(self) -> str:
         return self.feature_name
+
+    def _apply_rl_parameters(self, params):
+        # Extract and clamp parameters to [0, 1]
+        alpha = np.clip(float(params[0]), 0.0, 1.0)
+        beta = np.clip(float(params[1]), 0.0, 1.0)
+        gamma = np.clip(float(params[2]), 0.0, 1.0)
+        
+        # Log if clamping occurred
+        if not (0.0 <= params[0] <= 1.0):
+            logger.debug(f"[{self.feature_name}] Clamped params[0] from {params[0]} to {alpha}")
+        if not (0.0 <= params[1] <= 1.0):
+            logger.debug(f"[{self.feature_name}] Clamped params[1] from {params[1]} to {beta}")
+        if not (0.0 <= params[2] <= 1.0):
+            logger.debug(f"[{self.feature_name}] Clamped params[2] from {params[2]} to {gamma}")
+        
+        # Linear interpolation: min + alpha * (max - min)
+        self.max_react_gap_m = (
+            self.min_detection_range + 
+            alpha * (self.max_detection_range - self.min_detection_range)
+        )
+        
+        self.time_to_collision_threshold_s = (
+            self.min_ttc_threshold + 
+            beta * (self.max_ttc_threshold - self.min_ttc_threshold)
+        )
+        
+        self.brake_duration_s = (
+            self.min_brake_duration + 
+            gamma * (self.max_brake_duration - self.min_brake_duration)
+        )
+        
+        logger.debug(
+            f"[{self.feature_name}] RL params applied: "
+            f"detection_range={self.max_react_gap_m:.2f}m, "
+            f"ttc_threshold={self.time_to_collision_threshold_s:.2f}s, "
+            f"brake_duration={self.brake_duration_s:.2f}s"
+        )
 
     def _log_bsm_events(self, events: dict):
         any_events = any(len(v) for v in events.values())
