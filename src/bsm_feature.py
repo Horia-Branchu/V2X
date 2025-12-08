@@ -35,7 +35,6 @@ class BSMFeature(BaseV2XFeature):
         self.max_time_to_collision_gap_m = float(max_time_to_collision_gap_m)
         self.max_decel_gap_m = float(max_decel_gap_m)
 
-        # RL parameter bounds
         self.min_detection_range = 20.0
         self.max_detection_range = 100.0
         self.min_ttc_threshold = 0.5
@@ -43,16 +42,16 @@ class BSMFeature(BaseV2XFeature):
         self.min_brake_duration = 0.5
         self.max_brake_duration = 2.0
 
-        # Per-step metric counters for reward calculation
         self._emergency_brake_count = 0
         self._slowdown_count = 0
         self._critical_ttc_count = 0
 
-        # Reward component weights
-        self.w_ttc = 2.0
-        self.w_brake = 0.5
-        self.w_critical = 5.0
-        self.w_safe = 0.2
+        # Reward weights for different safety metrics
+        self.w_ttc = 2.0        # Weight for time-to-collision penalty
+        self.w_brake = 0.5      # Weight for brake action penalty
+        self.w_critical = 5.0   # Weight for critical situation penalty
+        self.w_safe = 0.2       # Weight for safe following distance bonus
+        self.slowdown_weight_factor = 0.5  # Slowdowns are less severe than emergency brakes
 
         self.observation_size = 5
         self.action_size = 1
@@ -73,7 +72,6 @@ class BSMFeature(BaseV2XFeature):
         })
 
     def get_observation(self) -> np.ndarray:
-        # Handle disabled feature or empty vehicle list
         if not self.enable:
             return np.zeros(5, dtype=np.float32)
         
@@ -88,7 +86,6 @@ class BSMFeature(BaseV2XFeature):
         total_ttc = 0.0
         
         for vehicle_id in vehicle_ids:
-            # Get leader data within detection range
             leader_data = traci.vehicle.getLeader(vehicle_id, dist=self.max_react_gap_m)
             if not leader_data:
                 continue
@@ -103,23 +100,18 @@ class BSMFeature(BaseV2XFeature):
             except traci.TraCIException:
                 continue
             
-            # Calculate relative speed (only positive, approaching)
             rel_speed = max(0.0, follower_speed - leader_speed)
             
-            # Calculate time to collision
             if rel_speed > 1e-3:
                 ttc = gap / rel_speed
             else:
                 ttc = float('inf')
             
-            # Accumulate metrics
             vehicle_pair_count += 1
             total_gap += gap
             total_rel_speed += rel_speed
-            # Clamp TTC to 10.0 for averaging purposes
             total_ttc += min(ttc, 10.0)
         
-        # Calculate averages
         if vehicle_pair_count > 0:
             avg_gap_distance = total_gap / vehicle_pair_count
             avg_relative_speed = total_rel_speed / vehicle_pair_count
@@ -130,24 +122,21 @@ class BSMFeature(BaseV2XFeature):
             avg_time_to_collision = 0.0
         
         # Return observation array with shape (5,) and dtype float32
-        observation = np.array([
-            float(vehicle_pair_count),
-            avg_gap_distance,
-            avg_relative_speed,
-            avg_time_to_collision,
-            float(self._emergency_brake_count)
-        ], dtype=np.float32)
-        
         logger.debug(
             f"[{self.feature_name}] Observation: pairs={vehicle_pair_count}, "
             f"avg_gap={avg_gap_distance:.2f}m, avg_rel_speed={avg_relative_speed:.2f}m/s, "
             f"avg_ttc={avg_time_to_collision:.2f}s, brakes={self._emergency_brake_count}"
         )
         
-        return observation
+        return np.array([
+            float(vehicle_pair_count),
+            avg_gap_distance,
+            avg_relative_speed,
+            avg_time_to_collision,
+            float(self._emergency_brake_count)
+        ], dtype=np.float32)
 
     def calculate_reward(self) -> float:
-        # Return 0.0 if feature disabled or no vehicles
         if not self.enable:
             return 0.0
         
@@ -155,7 +144,6 @@ class BSMFeature(BaseV2XFeature):
         if len(vehicle_ids) == 0:
             return 0.0
         
-        # Initialize reward components
         total_ttc_penalty = 0.0
         critical_ttc_count = 0
         safe_gap_bonus = 0.0
@@ -195,15 +183,18 @@ class BSMFeature(BaseV2XFeature):
             if gap > self.min_gap * 2:
                 safe_gap_bonus += 0.1
         
-        # Compute weighted sum of reward components
+        # Compute weighted sum of reward components:
+        # - Penalize low time-to-collision values (unsafe following)
+        # - Penalize brake interventions (emergency brakes + weighted slowdowns)
+        # - Heavily penalize critical situations (very low TTC)
+        # - Reward safe following distances
         reward = (
             -self.w_ttc * total_ttc_penalty
-            - self.w_brake * (self._emergency_brake_count + self._slowdown_count * 0.5)
+            - self.w_brake * (self._emergency_brake_count + self._slowdown_count * self.slowdown_weight_factor)
             - self.w_critical * critical_ttc_count
             + self.w_safe * safe_gap_bonus
         )
         
-        # Add debug logging for reward breakdown
         logger.debug(
             f"[{self.feature_name}] reward: ttc_penalty={total_ttc_penalty:.2f}, "
             f"brakes={self._emergency_brake_count}, slowdowns={self._slowdown_count}, "
@@ -217,12 +208,10 @@ class BSMFeature(BaseV2XFeature):
         return self.feature_name
 
     def _apply_rl_parameters(self, params):
-        # Extract and clamp parameters to [0, 1]
         alpha = np.clip(float(params[0]), 0.0, 1.0)
         beta = np.clip(float(params[1]), 0.0, 1.0)
         gamma = np.clip(float(params[2]), 0.0, 1.0)
         
-        # Log if clamping occurred
         if not (0.0 <= params[0] <= 1.0):
             logger.debug(f"[{self.feature_name}] Clamped params[0] from {params[0]} to {alpha}")
         if not (0.0 <= params[1] <= 1.0):
@@ -230,7 +219,8 @@ class BSMFeature(BaseV2XFeature):
         if not (0.0 <= params[2] <= 1.0):
             logger.debug(f"[{self.feature_name}] Clamped params[2] from {params[2]} to {gamma}")
         
-        # Linear interpolation: min + alpha * (max - min)
+        # Map normalized RL parameters [0,1] to physical ranges
+        # This allows the RL agent to explore different BSM configurations
         self.max_react_gap_m = (
             self.min_detection_range + 
             alpha * (self.max_detection_range - self.min_detection_range)
@@ -380,7 +370,6 @@ class BSMFeature(BaseV2XFeature):
         if not self.enable:
             return
 
-        # Clear per-step metric counters at start of each step
         self._emergency_brake_count = 0
         self._slowdown_count = 0
         self._critical_ttc_count = 0
@@ -402,7 +391,6 @@ class BSMFeature(BaseV2XFeature):
             )
             rl_mode = False
 
-        # RL Mode: extract components and apply RL methods
         if rl_mode:
             try:
                 bsm_action = action["bsm_action"]
@@ -411,8 +399,7 @@ class BSMFeature(BaseV2XFeature):
                 logger.debug(
                     f"[{self.feature_name}] RL mode: action={bsm_action}, params={params}"
                 )
-                
-                # Apply RL parameters and action
+
                 self._apply_rl_parameters(params)
                 self._apply_rl_action(bsm_action)
                 return
@@ -420,9 +407,7 @@ class BSMFeature(BaseV2XFeature):
                 logger.warning(
                     f"[{self.feature_name}] RL action execution failed: {e}, falling back to rule-based mode"
                 )
-                # Fall through to rule-based mode
-
-        # Rule-Based Mode: use existing heuristic logic
+                
         current_time_s = traci.simulation.getTime()
         
         events = {
@@ -525,7 +510,6 @@ class BSMFeature(BaseV2XFeature):
 
     def feature_reset(self):
         self._last_brake_step.clear()
-        # Clear RL metric counters
         self._emergency_brake_count = 0
         self._slowdown_count = 0
         self._critical_ttc_count = 0
