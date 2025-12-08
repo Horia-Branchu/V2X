@@ -11,7 +11,7 @@ from base_v2x_feature import BaseV2XFeature
 logger = logging.getLogger("v2x")
 
 PRIORITY_TYPE = "emergency"
-RETURN_DISTANCE = 120.0     # distance after which vehicles fully restore normal lane-change behavior
+RETURN_DISTANCE = 200.0     # distance after which vehicles fully restore normal lane-change behavior
 LANE_FREE_DIST = 8.0        # how far a car must be from another to consider lane "free"
 MAX_BULK_COMMANDS_PER_STEP: int = 50   # avoid sending too many TraCI cmds
 
@@ -206,6 +206,19 @@ class PriorityCorridorFeature(BaseV2XFeature):
                 if vehicle_id == priority_id or vehicle_id not in positions:
                     continue
 
+                # Skip vehicles BEHIND the emergency vehicle
+                try:
+                    emergency_vehicle_lane_pos = traci.vehicle.getLanePosition(priority_id)
+                    current_vehicle_lane_pos = traci.vehicle.getLanePosition(vehicle_id)
+                except Exception as e:
+                    logger.error(
+                        "[%s] Could not read lanePosition for %s or %s: %s",
+                        self.feature_name, priority_id, vehicle_id, e
+                    )
+                    continue
+                if current_vehicle_lane_pos < emergency_vehicle_lane_pos:
+                    continue
+
                 vehicle_position = positions[vehicle_id]
 
                 # Get distance between the emergency vehicle and the current vehicle
@@ -294,7 +307,7 @@ class PriorityCorridorFeature(BaseV2XFeature):
                     # Perform the lane change
                     try:
                         traci.vehicle.setLaneChangeMode(vehicle_id, 0)
-                        traci.vehicle.changeLane(vehicle_id, target_lane_index, 3)
+                        traci.vehicle.changeLane(vehicle_id, target_lane_index, 1)
                         vehicle_moved = True
                         cmds_sent += 1
 
