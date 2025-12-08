@@ -4,7 +4,7 @@ import seaborn as sns
 import argparse
 
 from pathlib import Path
-from data_collector import vehicle_filename
+from data_collector import baseline_filename, v2x_filename, data_dir_name
 
 def enforce_features(df, x: str, y: str):
     if x == y:
@@ -12,15 +12,6 @@ def enforce_features(df, x: str, y: str):
     for f in (x, y):
         if f not in df.columns:
             raise ValueError(f"Required feature '{f}' not found in dataset.")
-
-def find_latest_file(root_dir: Path, filename=vehicle_filename):
-    """Find the data file within the project"""
-    candidates = list(root_dir.rglob(filename))
-    if len(candidates) == 0:
-        return None
-    #Sorting files by the last modification time
-    candidates.sort(key=lambda f: f.stat().st_mtime, reverse=True)
-    return candidates[0]
 
 
 def set_total_points(df, total_points, random_state=42):
@@ -30,10 +21,8 @@ def set_total_points(df, total_points, random_state=42):
         # Proving distribution between baseline and v2x is equal
         if "run" in df.columns:
             print("Distribution before sampling:", df["run"].value_counts().to_dict())
-            #Find the size of the smallest class (baseline or v2x)
             smallest_class = df["run"].value_counts().min()
             max_allowed = 2 * smallest_class
-            #Checking the max number of points
             if total_points > max_allowed:
                 raise ValueError(
                     f"total points = {total_points} exceeds the maximum allowed {max_allowed}"
@@ -298,27 +287,34 @@ def plot_stop_duration_vs_speed(df: pd.DataFrame, out_dir: Path) -> None:
         plt.close()
 
 def main(max_points):
-    root = Path(__file__).resolve().parents[2]
-    parquet_path = find_latest_file(root, filename=vehicle_filename)
-    if parquet_path is None:
-        print("No {vehicle_filename} file found.")
+    project_root = Path(__file__).resolve().parents[2]
+    data_dir = project_root / data_dir_name
+
+    baseline_path = data_dir / baseline_filename
+    v2x_path = data_dir / v2x_filename
+
+    if not baseline_path.exists():
+        print(f"No {baseline_path} file found.")
         return
 
-    out_dir = parquet_path.parent
-    baseline_path = out_dir / f"{Path(vehicle_filename).stem}_baseline.parquet"
+    if not v2x_path.exists():
+        print(f"Missing V2X file: {v2x_path}")
+        return
 
-    df_v2x = pd.read_parquet(parquet_path)
+    out_dir = data_dir
+
+    df_v2x = pd.read_parquet(v2x_path)
     df_v2x["run"] = "v2x"
 
     if baseline_path.exists():
         df_baseline = pd.read_parquet(baseline_path)
         df_baseline["run"] = "baseline"
         df = pd.concat([df_baseline, df_v2x], ignore_index=True)
-        print(f"Using dataset: {parquet_path} + baseline at {baseline_path}\n"
+        print(f"Using dataset: {baseline_path}\nv2x at {v2x_path}\n"
               f"Generating comparison plots (baseline vs v2x)")
     else:
         df = df_v2x
-        print(f"Using dataset: {parquet_path}\n"
+        print(f"Using datasets: {v2x_path}\n"
               f"(No {baseline_path.name} found, plotting single run.)")
 
     df_sampled = set_total_points(df, total_points=max_points)

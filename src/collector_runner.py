@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 from simulation_runner import SimulationRunner
 from base_sumo_env import BaseSumoEnvironment
-from data_collector import DataCollector, vehicle_filename
+from data_collector import DataCollector, baseline_filename, v2x_filename, data_dir_name
 from analysis import correlation_map, geo_plots, plots
 
 logger = logging.getLogger("v2x")
@@ -92,15 +92,16 @@ def main():
          "At least one of --bsm --tls --priority --reroute must be true")
 
     project_root = Path(__file__).resolve().parents[1]
-    parquet_path = project_root / "data" / vehicle_filename
-    baseline_path = project_root / "data" / f"{Path(vehicle_filename).stem}_baseline.parquet"
-    # Ensuring baseline and v2x files do not exist
+    data_dir = project_root / data_dir_name
+    baseline_path = data_dir / baseline_filename
+    v2x_path = data_dir / v2x_filename
+
     if baseline_path.exists():
         raise ValueError(f"\nBaseline file exists.Delete {baseline_path} before rerunning")
-    elif parquet_path.exists():
-        raise ValueError(f"\nV2X file exists.Delete {parquet_path} before rerunning")
+    if v2x_path.exists():
+        raise ValueError(f"\nV2X file exists.Delete {v2x_path} before rerunning")
 
-    baseline_collector = DataCollector(reset_on_start=True)
+    baseline_collector = DataCollector(output_filename=baseline_filename,reset_on_start=True)
     run_once(
         config_path=cfg,
         steps=args.steps,
@@ -109,10 +110,7 @@ def main():
         collector=baseline_collector
     )
 
-    if parquet_path.exists():
-        parquet_path.rename(baseline_path)
-
-    params_collector = DataCollector(reset_on_start=True)
+    params_collector = DataCollector(output_filename=v2x_filename,reset_on_start=True)
     run_once(
         config_path=cfg,
         steps=args.steps,

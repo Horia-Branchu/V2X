@@ -4,31 +4,16 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 from pathlib import Path
-from data_collector import vehicle_filename
-
-
-def find_latest_file(root_dir: Path, filename=vehicle_filename):
-    """Search for the newest matching file in the project folder"""
-
-    print(f"Correlation Map for {root_dir}\n"
-          f"Correlation Map is generating")
-
-    candidates = list(root_dir.rglob(filename))
-    if len(candidates) == 0:
-        return None
-
-    ###Sorting files by the last modification time
-    candidates.sort(key=lambda f: f.stat().st_mtime, reverse=True)
-    return candidates[0]
+from data_collector import baseline_filename, data_dir_name
 
 def main():
     """Generate a Pearson correlation heatmap without time and veh_id and save it"""
 
     project_root = Path(__file__).resolve().parents[2]
-    parquet_path = find_latest_file(project_root, vehicle_filename)
+    parquet_path = project_root/ data_dir_name / baseline_filename
 
-    if not parquet_path or not parquet_path.exists():
-        print(f"Could not find any {vehicle_filename} in the project"
+    if not parquet_path.exists():
+        print(f"Could not find any {baseline_filename} in the project"
               "Run the simulation first so DataCollector generates it")
         return None
 

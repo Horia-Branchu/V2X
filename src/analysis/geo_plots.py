@@ -6,28 +6,10 @@ import pandas as pd
 import sumolib
 import logging
 
-from data_collector import vehicle_filename
+from data_collector import baseline_filename, v2x_filename, data_dir_name
 from pathlib import Path
 
 logger = logging.getLogger("v2x")
-
-def find_latest(root_dir: Path, pattern: str):
-    candidates = list(root_dir.rglob(pattern))
-    if not candidates:
-        return None
-    candidates.sort(key=lambda f: f.stat().st_mtime, reverse=True)
-    return candidates[0]
-
-
-def find_latest_file(root_dir: Path, filename=vehicle_filename):
-    """Find latest file within the project (same behavior as plots.py)."""
-    return find_latest(root_dir, filename)
-
-
-def find_latest_sumocfg(root_dir: Path, pattern="*.sumocfg"):
-    """Find the most recently modified SUMO config."""
-    return find_latest(root_dir, pattern)
-
 
 def _find_net_path_from_sumocfg(sumo_cfg_path: Path) -> Path:
     """Extract the net-file path from a SUMO .sumocfg file."""
@@ -100,7 +82,7 @@ def plot_min_speed_map(
         print("No edge metrics found.")
         return
 
-    net_path = _find_net_path_from_sumocfg(Path(sumo_config))
+    net_path = _find_net_path_from_sumocfg(sumo_config)
     net = sumolib.net.readNet(str(net_path))
     xmin, ymin, xmax, ymax = _net_bbox_from_shapes(net)
 
@@ -216,24 +198,21 @@ def compare_geo_plots(data_dir: Path):
 
 def main():
     project_root = Path(__file__).resolve().parents[2]
-    data_dir = project_root / "data"
+    data_dir = project_root / data_dir_name
 
-    params_path = data_dir / vehicle_filename
-    baseline_path = data_dir / f"{Path(vehicle_filename).stem}_baseline.parquet"
+    baseline_path = data_dir / baseline_filename
+    v2x_path = data_dir / v2x_filename
 
     sumo_cfg_path = project_root / "config" / "simulation.sumocfg"
     if not sumo_cfg_path.exists():
         raise FileNotFoundError(f"Expected config file not found: {sumo_cfg_path}")
-    if not sumo_cfg_path:
-        print("ERROR: No .sumocfg found.")
-        return
 
     print(f"Using SUMO config: {sumo_cfg_path}")
     print(f"Looking for parquet files in: {data_dir}")
 
-    if params_path.exists():
+    if v2x_path.exists():
         print("Generating geographic plot for V2X run...")
-        generate_geo_plot(params_path, sumo_cfg_path, "min_speed_V2X.png")
+        generate_geo_plot(v2x_path, sumo_cfg_path, "min_speed_V2X.png")
     else:
         print("No {vehicle_filename} — skipping V2X plot")
 
@@ -241,9 +220,9 @@ def main():
         print("Generating geographic plot for BASELINE run...")
         generate_geo_plot(baseline_path, sumo_cfg_path, "min_speed_baseline.png")
     else:
-        print(f"No {Path(vehicle_filename).stem}_baseline.parquet found — skipping baseline plot")
+        print(f"No {Path(baseline_filename).stem}_baseline.parquet found — skipping baseline plot")
 
-    if params_path.exists() and baseline_path.exists():
+    if v2x_path.exists() and baseline_path.exists():
         try:
             compare_geo_plots(data_dir)
         except Exception as e:
