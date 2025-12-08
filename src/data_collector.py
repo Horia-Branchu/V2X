@@ -3,16 +3,19 @@ import libsumo as traci
 from pathlib import Path
 
 # global definition
-vehicle_filename = "v2v.parquet"
+baseline_filename = "vehicle_state_baseline.parquet"
+v2x_filename = "vehicle_state_v2x.parquet"
+data_dir_name = "data"
 
 class DataCollector:
-    def __init__(self, reset_on_start=True):
+    def __init__(self,output_filename,reset_on_start=True):
         project_root = Path(__file__).resolve().parents[1]
-        self.out_dir = project_root / "data"
+        self.out_dir = project_root / data_dir_name
         self.buffer = []
         # making the directory in a file named data
         self.out_dir.mkdir(parents=True, exist_ok=True)
-        self.parquet_path = self.out_dir / vehicle_filename
+        self.output_filename = output_filename
+        self.parquet_path = self.out_dir / self.output_filename
         # dict for feature engineering
         self.prev_accel = {}
         self.prev_time = {}
