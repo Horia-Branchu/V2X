@@ -122,7 +122,7 @@ def plot_co2_pollution_map(
         xs, ys = zip(*shp)
         ax_l.plot(xs, ys, color="lightgray", linewidth=0.8, alpha=0.8)
 
-    ax_l.set_title("Baseline")
+    ax_l.set_title("Baseline reference pollution map")
     ax_l.set_xlim([xmin, xmax])
     ax_l.set_ylim([ymin, ymax])
     ax_l.set_aspect("equal", adjustable="box")
@@ -207,7 +207,7 @@ def main():
         df_pollution=df_pollution,
         sumo_config=sumo_cfg_path,
         out_path=out_path,
-        title="V2X"
+        title="Pollution map after V2X"
     )
 
     print(f"CO2 pollution geographic plot finished.")

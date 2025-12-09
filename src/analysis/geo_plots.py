@@ -210,11 +210,9 @@ def compare_geo_plots(data_dir: Path):
     fig, axes = plt.subplots(1, 2, figsize=(18, 9))
 
     axes[0].imshow(img_base)
-    axes[0].set_title("Baseline")
     axes[0].axis("off")
 
     axes[1].imshow(img_v2x)
-    axes[1].set_title("V2X")
     axes[1].axis("off")
 
     out_path = data_dir / "min_speed_comparison.png"
