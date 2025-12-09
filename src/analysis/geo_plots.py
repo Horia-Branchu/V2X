@@ -51,27 +51,24 @@ def compute_edge_min_speed(df: pd.DataFrame):
         raise ValueError("DataFrame must have columns: edge, speed")
 
     d = df.copy()
-    d["edge"] = d["edge"].astype(str)
-    d = d[d["edge"].str.len() > 0]
+    d = df[df["speed"] > 0].copy()
 
     gb = d.groupby("edge")["speed"]
     out = gb.min().rename("min_speed").to_frame()
     out["hits"] = gb.size()
-    out = out[out["min_speed"] > 0].reset_index()
-    return out
-
+    return out.reset_index()
 
 def plot_min_speed_map(
-        df: pd.DataFrame,
-        sumo_config: Path,
-        out_path: Path,
-        background_path: Path | None = None,
-        cmap_name: str = "viridis",
-        linewidth_base: float = 1.6,
-        linewidth_by_hits: bool = True,
-        hits_scale: float = 0.45,
-        top_n_labels: int = 0,
-        title: str = "Minimum speed per edge (geographic)"
+    df: pd.DataFrame,
+    sumo_config: Path,
+    out_path: Path,
+    background_path: Path | None = None,
+    cmap_name: str = "viridis",
+    linewidth_base: float = 1.6,
+    linewidth_by_hits: bool = True,
+    hits_scale: float = 0.45,
+    top_n_labels: int = 0,
+    title: str = "Minimum speed per edge (geographic)"
 ):
     """Draw the SUMO network colored by per-edge minimum speed."""
     stats = compute_edge_min_speed(df)
@@ -86,7 +83,7 @@ def plot_min_speed_map(
     net = sumolib.net.readNet(str(net_path))
     xmin, ymin, xmax, ymax = _net_bbox_from_shapes(net)
 
-    vmin, vmax = 2, 20
+    vmin, vmax = 3, 12
     cmap = mpl.colormaps.get_cmap(cmap_name)
     norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
 
@@ -94,7 +91,33 @@ def plot_min_speed_map(
 
     if background_path and Path(background_path).exists():
         img = plt.imread(background_path)
-        ax.imshow(img, extent=[xmin, xmax, ymin, ymax], origin="lower", alpha=0.65)
+        ax.imshow(
+            img,
+            extent=[xmin, xmax, ymin, ymax],
+            origin="lower",
+            alpha=0.65,
+            zorder=0,
+        )
+
+    for e in net.getEdges():
+        if not _is_real_edge(e):
+            continue
+
+        shp = e.getShape()
+        if not shp or len(shp) < 2:
+            continue
+
+        xs, ys = zip(*shp)
+
+        ax.plot(
+            xs,
+            ys,
+            color="lightgray",
+            linewidth=0.6,
+            alpha=0.5,
+            solid_capstyle="round",
+            zorder=1,
+        )
 
     labels = [] if top_n_labels > 0 else None
 
@@ -116,7 +139,15 @@ def plot_min_speed_map(
             lw += hits_scale * math.log10(hits)
 
         xs, ys = zip(*shp)
-        ax.plot(xs, ys, color=color, linewidth=lw, solid_capstyle="round", alpha=0.95)
+        ax.plot(
+            xs,
+            ys,
+            color=color,
+            linewidth=lw,
+            solid_capstyle="round",
+            alpha=0.95,
+            zorder=2,
+        )
 
         if labels is not None:
             mid = len(xs) // 2
@@ -130,17 +161,15 @@ def plot_min_speed_map(
     if labels:
         labels.sort(key=lambda t: t[0])  # slowest first
         for val, x, y, eid in labels[:top_n_labels]:
-            ax.text(x, y, f"{eid}\n{val:.1f} m/s", fontsize=8,
-                    ha="center", va="center")
+            ax.text(x,y,f"{eid}\n{val:.1f} m/s",fontsize=8,ha="center",va="center",zorder=3,)
 
-    ax.set_xlim([xmin, xmax]);
+    ax.set_xlim([xmin, xmax])
     ax.set_ylim([ymin, ymax])
     ax.set_aspect("equal", adjustable="box")
-    ax.set_xticks([]);
+    ax.set_xticks([])
     ax.set_yticks([])
     ax.set_title(title)
     plt.tight_layout()
-
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     plt.savefig(out_path, dpi=180)
