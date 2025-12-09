@@ -345,7 +345,7 @@ Initializes the `PriorityCorridorFeature` responsible for giving way to emergenc
 **Output:** `None`
 
 **What it does:**  
-Sets up internal state: dummy observation/action sizes (for future RL), a cache of emergency-vehicle IDs, per-step log events, and a running counter of successful yield maneuvers. Uses constants:
+Sets up internal state: a cache of emergency-vehicle IDs, per-step log events, and a running counter of successful yield maneuvers. Uses constants:
 - `PRIORITY_TYPE`: vehicle type treated as emergency (e.g. `"emergency"`).
 - `RETURN_DISTANCE`: distance after which cars return to normal lane-change behavior.
 - `LANE_FREE_DIST`: local clearance to consider a target lane “free enough”.
@@ -408,7 +408,7 @@ Aggregates the per-step yield events:
 ### take_action(action)
 
 **Input:**
-- `action`: current action (not used by the rule-based logic)
+- `action`: current action
 
 **Output:** `None`
 
@@ -427,16 +427,6 @@ Implements the priority corridor behavior each simulation step:
    - If `traci.vehicle.couldChangeLane` allows it, performs a short `changeLane` into a safe adjacent lane, increments the total yield counter, and records a verbose + short log entry.
 4. Respects `MAX_BULK_COMMANDS_PER_STEP` to avoid flooding TraCI.
 5. Calls `_log_priority_events()` once at the end of the step.
-
-### feature_step / feature_reset
-
-**Input:** `None`
-
-**Output:** `None`
-
-**What they do:**  
-Currently only emit debug logs. They are hooks for future per-step or reset-specific logic for this feature.
-
 
 # Terminal Display
 
