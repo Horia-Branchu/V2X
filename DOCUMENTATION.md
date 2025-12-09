@@ -12,6 +12,7 @@
 │   ├── [base_sumo_env.py](#base-sumo-environment) <br>
 │   ├── [base_v2x_feature.py](#base-v2x-feature) <br>
 │   ├── [dynamic_tls.py](#dynamic-tls) <br>
+│   ├── [priority_corridor.py](#priority-corridor-feature) <br>
 │   ├── [terminal_display.py](#terminal-display) <br>
 │   └── [simulation_runner.py](#simulation-runner-class) <br>
 
@@ -331,6 +332,111 @@ Executes a traffic-light update step.
 
 **What it does:**
 - Loops through all TLS systems and applies dynamic_tls() to each.
+
+# Priority Corridor Feature
+
+### Constructor
+Initializes the `PriorityCorridorFeature` responsible for giving way to emergency vehicles by creating a “priority corridor” on the same edge.
+
+**Input:**
+- `feature_name` (str): Name of the feature (default: `"PriorityCorridorFeature"`).
+- `enabled` (bool): Whether the feature is active (default: `True`).
+
+**Output:** `None`
+
+**What it does:**  
+Sets up internal state: dummy observation/action sizes (for future RL), a cache of emergency-vehicle IDs, per-step log events, and a running counter of successful yield maneuvers. Uses constants:
+- `PRIORITY_TYPE`: vehicle type treated as emergency (e.g. `"emergency"`).
+- `RETURN_DISTANCE`: distance after which cars return to normal lane-change behavior.
+- `LANE_FREE_DIST`: local clearance to consider a target lane “free enough”.
+- `MAX_BULK_COMMANDS_PER_STEP`: safety cap on TraCI commands per step.
+
+
+### _cache_positions_and_detect_emergencies
+
+**Input:**
+- `vehicle_ids` (Iterable[str])
+
+**Output:**
+- `positions` (dict): `vehicle_id -> (x, y)` world coordinates.
+- `edges` (dict): `vehicle_id -> edge_id`.
+- `edge_to_vehicle_ids` (dict): `edge_id -> list[vehicle_id]`.
+
+**What it does:**  
+Makes one TraCI pass to cache positions and edges for all vehicles and updates `_emergency_vehicle_ids` based on `PRIORITY_TYPE`.
+
+
+### _choose_best_lane_for_emergency(edge_id)
+
+**Input:**
+- `edge_id` (str)
+
+**Output:**
+- `least_used_lane` (int)
+
+**What it does:**  
+Counts vehicles per lane on the given edge using `traci.lane.getLastStepVehicleIDs` and returns the lane index with the fewest vehicles. If TraCI fails, falls back to lane `0`.
+
+
+### _lane_is_free_enough(edge_id, lane_index, positions, vehicle_id)
+
+**Input:**
+- `edge_id` (str)
+- `lane_index` (int)
+- `positions` (dict)
+- `vehicle_id` (str)
+
+**Output:**
+- `bool`
+
+**What it does:**  
+Checks if the target lane has enough local space for a safe merge by comparing the merging vehicle’s `(x, y)` position to other vehicles in that lane and enforcing a minimum distance `LANE_FREE_DIST` in both axes.
+
+
+### _log_priority_events()
+
+**Input:** `None` (uses internal buffers)
+
+**Output:** `None`
+
+**What it does:**  
+Aggregates the per-step yield events:
+- **TTY (interactive terminal):** shows a compact line via `terminal_display` with total yields and the latest short event.
+- **Non-TTY (piped to file):** writes each verbose event string to the logger at `INFO` level.
+
+
+### take_action(action)
+
+**Input:**
+- `action`: current action (not used by the rule-based logic)
+
+**Output:** `None`
+
+**What it does:**  
+Implements the priority corridor behavior each simulation step:
+
+1. Reads all vehicle IDs and caches `positions`, `edges`, and `edge_to_vehicle_ids`.
+2. Filters active emergency vehicles and, for each:
+   - Finds its edge and the least-used lane via `_choose_best_lane_for_emergency`.
+3. For every other vehicle on that edge:
+   - Skips vehicles behind the emergency vehicle using `traci.vehicle.getLanePosition` (lane progression, not `(x, y)`).
+   - Uses the squared distance to the emergency vehicle and `RETURN_DISTANCE` to decide when to restore default `laneChangeMode`.
+   - Only processes vehicles in the lane chosen for the emergency vehicle.
+   - Skips stopped vehicles (speed `< 0.1`).
+   - Builds a small list of adjacent target lanes (left/right) and checks them with `_lane_is_free_enough`.
+   - If `traci.vehicle.couldChangeLane` allows it, performs a short `changeLane` into a safe adjacent lane, increments the total yield counter, and records a verbose + short log entry.
+4. Respects `MAX_BULK_COMMANDS_PER_STEP` to avoid flooding TraCI.
+5. Calls `_log_priority_events()` once at the end of the step.
+
+### feature_step / feature_reset
+
+**Input:** `None`
+
+**Output:** `None`
+
+**What they do:**  
+Currently only emit debug logs. They are hooks for future per-step or reset-specific logic for this feature.
+
 
 # Terminal Display
 
