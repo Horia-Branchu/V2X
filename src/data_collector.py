@@ -21,6 +21,7 @@ class DataCollector:
         self.prev_time = {}
         self.was_stopped = {}
         self.stops = {}
+        self.queue_time = {}
 
         """Reset file each time the program starts
            CLOSE THE parquet FILE IF IT'S OPENED BEFORE RERUNNING"""
@@ -59,6 +60,12 @@ class DataCollector:
                 self.stops[vid] += 1
             self.was_stopped[vid] = is_stopped_now
 
+            if vid not in self.queue_time:
+                self.queue_time[vid] = 0.0
+
+            if is_stopped_now:
+                self.queue_time[vid] += time_diff
+
             frame.append({
                 "time": time,
                 "veh_id": vid,
@@ -68,6 +75,8 @@ class DataCollector:
                 "co2": co2_now,
                 "jerk": jerk_now,
                 "stops": self.stops[vid],
+                "time_loss": traci.vehicle.getTimeLoss(vid),
+                "queue_time": self.queue_time[vid],
             })
 
         if len(frame) > 0:
