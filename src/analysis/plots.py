@@ -6,6 +6,16 @@ import argparse
 from pathlib import Path
 from data_collector import baseline_filename, v2x_filename, data_dir_name
 
+def plot_filename(x: str, y: str, suffix: str = "png") -> str:
+    def clean(name: str) -> str:
+        return (
+            name.lower()
+            .replace(" ", "_")
+            .replace("/", "_")
+            .replace("-", "_")
+        )
+    return f"{clean(x)}_over_{clean(y)}.{suffix}"
+
 def enforce_features(df, x: str, y: str):
     if x == y:
         raise ValueError(f"Plotting '{x}' against itself is not allowed.")
@@ -76,7 +86,7 @@ def plot_accel_vs_co2(df, out_dir):
         fig.text(0.5, 0.015, summary, ha='center', fontsize=12)
 
         plt.tight_layout(rect=[0, 0.05, 1, 1])
-        plt.savefig(out_dir / "acceleration_over_CO2.png", dpi=150)
+        plt.savefig(out_dir / plot_filename("accel", "co2"), dpi=150)
         plt.close()
 
 def plot_speed_vs_co2(df, out_dir):
@@ -114,7 +124,7 @@ def plot_speed_vs_co2(df, out_dir):
         fig.text(0.5, 0.015, summary, ha='center', fontsize=12)
 
         plt.tight_layout(rect=[0, 0.05, 1, 1])
-        plt.savefig(out_dir / "speed_over_CO2.png", dpi=150)
+        plt.savefig(out_dir / plot_filename("speed", "co2"), dpi=150)
         plt.close()
 
 def plot_co2_vs_jerk(df, out_dir):
@@ -152,7 +162,7 @@ def plot_co2_vs_jerk(df, out_dir):
         fig.text(0.5, 0.015, summary, ha='center', fontsize=12)
 
         plt.tight_layout(rect=[0, 0.05, 1, 1])
-        plt.savefig(out_dir / "jerk_over_CO2.png", dpi=150)
+        plt.savefig(out_dir / plot_filename("jerk", "co2"), dpi=150)
         plt.close()
 
 def compute_stop_durations(df: pd.DataFrame) -> pd.DataFrame:
@@ -283,7 +293,7 @@ def plot_stop_duration_vs_speed(df: pd.DataFrame, out_dir: Path) -> None:
         fig.text(0.5, 0.015, summary, ha='center', fontsize=12)
 
         plt.tight_layout(rect=[0, 0.05, 1, 1])
-        plt.savefig(out_dir / "stop_duration_over_speed.png", dpi=150)
+        plt.savefig(out_dir / plot_filename("stop_duration", "avg_speed"), dpi=150)
         plt.close()
 
 def plot_queue_time_over_time(df: pd.DataFrame, out_dir: Path):
@@ -332,7 +342,7 @@ def plot_queue_time_over_time(df: pd.DataFrame, out_dir: Path):
 
         plt.ticklabel_format(style="plain", axis="y")
         plt.tight_layout(rect=[0, 0.05, 1, 1])
-        plt.savefig(out_dir / "queue_time_over_time.png", dpi=150)
+        plt.savefig(out_dir / plot_filename("queue_time", "time"), dpi=150)
         plt.close()
 
 
@@ -457,7 +467,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run plots with custom sampling")
     parser.add_argument("--max-points",
                         type=int,
-                        default=2000000,
+                        default=200000,
                         help="Maximum number of sampled points used in plotting"
 )
     args = parser.parse_args()
