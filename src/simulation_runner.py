@@ -51,6 +51,13 @@ class SimulationRunner:
             self.env._take_action(action)
             traci.simulationStep()
 
+            # Log base environment metrics
+            current_time = traci.simulation.getTime()
+            vehicle_count = traci.vehicle.getIDCount()
+            msg = f"Time {current_time:.1f}s: Vehicles in simulation: {vehicle_count}"
+            terminal_display.update("ENV", msg)
+            terminal_display.render()
+
             if self.env._is_terminated():
                 # obs, _ = self.env.reset()
                 logger.info(f"------ simulation reseted at step {current_step} ------")
@@ -72,6 +79,7 @@ class SimulationRunner:
                 terminal_display.render()
                 simulation_logic(current_step)
                 current_step += 1
+            self.arrived_vehicles_until_current_step += traci.simulation.getArrivedNumber()
             terminal_display.update("PROGRESSBAR",
                                     self.progress_bar.display_string(self.arrived_vehicles_until_current_step))
             terminal_display.render()
@@ -91,6 +99,13 @@ class SimulationRunner:
 
             self.env._take_action(action)
             traci.simulationStep()
+
+            # Log base environment metrics
+            current_time = traci.simulation.getTime()
+            vehicle_count = traci.vehicle.getIDCount()
+            msg = f"Time {current_time:.1f}s: Vehicles in simulation: {vehicle_count}"
+            terminal_display.update("ENV", msg)
+            terminal_display.render()
 
             # per-step feature test message — verbose (use DEBUG so rule-based runs don't get spammed)
             logger.debug(f"Step {current_step}: {feature_name}")
@@ -144,7 +159,8 @@ class SimulationRunner:
                 vehicle_count = traci.vehicle.getIDCount()
 
                 msg = f"Time {current_time:.1f}s: Vehicles: {vehicle_count}"
-                terminal_display.update("RUNNER", msg)
+                terminal_display.update("ENV", msg)
+                terminal_display.render()
                 self.arrived_vehicles_until_current_step += traci.simulation.getArrivedNumber()
                 terminal_display.update("PROGRESSBAR",
                                         self.progress_bar.display_string(self.arrived_vehicles_until_current_step))
@@ -166,7 +182,7 @@ class SimulationRunner:
 
             # single updating line for runner status
             msg = f"Time {current_time:.1f}s: Vehicles: {vehicle_count}"
-            terminal_display.update("RUNNER", msg)
+            terminal_display.update("ENV", msg)
             terminal_display.render()
             terminal_display.update("PROGRESSBAR",
                                     self.progress_bar.display_string(current=step+1, end=self.simulation_steps,
