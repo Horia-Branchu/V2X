@@ -29,7 +29,8 @@ def main(args, sumo_config="config/simulation.sumocfg"):
         tls=args.tls,
         bsm=args.bsm,
         priority=False,
-        reroute=False
+        reroute=False,
+        rl=True
     )
 
     # train RL agent for this feature
