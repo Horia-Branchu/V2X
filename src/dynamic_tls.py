@@ -21,8 +21,8 @@ class DynamicTLS(BaseV2XFeature):
         self.detection_range = 50.0     # meters
         self.extend_time = 5.0          # seconds
         self.lane_last_green = {}       # {lane_id: last_time_green}
+        self.tls_last_switch = {}       # {tls_id: last_switch_timestamp}
         self.max_wait = 30.0            # maximum amount of seconds a lane can wait
-        self.tls_override_times = {}    # {tls_id: timestamp}
         self._tls_log_events = []       # per-step event buffer for compact TTY display or verbose non-TTY logs
         self.phase_time = 0
         self._last_phase = {}
@@ -119,102 +119,145 @@ class DynamicTLS(BaseV2XFeature):
         short = message.split(',')[0]
         self._tls_log_events.append((verbose, short))
 
-    # Main dynamic TLS control function:
+    # Main dynamic TLS control controller:
     # - detects vehicles approaching intersections
-    # - extends green lights dynamically
-    # - switches light to green if only one direction has vehicles
-    # - grants green light to fewer cars that are waiting for a lot of cars to pass
+    # - extends green phase of the TLS if a vehicle is approaching from that side
+    # - if there are no vehicles approaching the green phase of the TLS but other lanes do, switch to the next phase
     # - restores default TLS program after manual overrides
     def dynamic_tls(self, tls_id):
 
         current_time = traci.simulation.getTime()
-        tls_lanes = traci.trafficlight.getControlledLanes(tls_id)
-        vehicle_list = traci.vehicle.getIDList()
+        phase = traci.trafficlight.getPhase(tls_id)
+        program = traci.trafficlight.getCompleteRedYellowGreenDefinition(tls_id)[0]
+        phases = program.phases
+        
+        if tls_id not in self.tls_last_switch:
+            self.tls_last_switch[tls_id] = current_time
 
-        # Checks if an override is already active and reverts to normal if time expired
-        if tls_id in self.tls_override_times:
-            if current_time - self.tls_override_times[tls_id] >= self.extend_time:
-                traci.trafficlight.setProgram(tls_id,"0")
-                self.spat_message_log(f"TLS {tls_id} returning to normal program")
-                del self.tls_override_times[tls_id]
+        time_in_phase = current_time - self.tls_last_switch[tls_id]
 
         approaching = self.get_approaching_vehicles_by_lane(tls_id)
-        if not approaching:
-            return
+        edge_count = {edge: len(v_list) for edge, v_list in approaching.items()}
+        total_approaching = sum(edge_count.values())
 
-        # Checks if the TLS for one of the lanes was red for more than max_wait
-        forced_lane = None
-        for lane in tls_lanes:
-            last_green = self.lane_last_green.get(lane, 0)
-            if current_time - last_green >= self.max_wait:                                                                                                                                                                    
-                forced_lane = lane
-                break
-        
-        # Grants green for lanes that have had red for too long
-        if forced_lane:
-            v_id = approaching.get(forced_lane, [None])[0]
-            if v_id:
-                self.set_tls_green_for_vehicle(tls_id, v_id)
-                traci.trafficlight.setPhaseDuration(tls_id,self.extend_time)
-                self.tls_override_times[tls_id] = current_time
-                self.lane_last_green[forced_lane] = current_time
-                self.spat_message_log(
-                    f"Max wait time exceeded, forcing GREEN for lane {forced_lane}",
-                    event_type="FORCED_GREEN")
+        state = traci.trafficlight.getRedYellowGreenState(tls_id)
+        controlled = traci.trafficlight.getControlledLinks(tls_id)
 
-        for v_id in vehicle_list:
-            lane_id = traci.vehicle.getLaneID(v_id)
-            if lane_id not in tls_lanes:
-                continue
+        green_lanes = []
+        for i, links in enumerate(controlled):
+            if i < len(state) and state[i] in ("G", "g"):
+                for inc, out, via in links:
+                    green_lanes.append(inc)
 
-            distance_to_tls = traci.lane.getLength(lane_id) - traci.vehicle.getLanePosition(v_id)
+        cars_in_green = sum(len(approaching.get(lane, [])) for lane in green_lanes)
+        cars_elsewhere = total_approaching - cars_in_green
 
-            if distance_to_tls < self.detection_range:
+        # 1. If lane hasn't had green for more than max_wait, force if
+        if approaching:
+            starved_lane = None
+            max_wait_elapsed = -1.0
+            for lane in approaching.keys():
+                last = self.lane_last_green.get(lane, 0.0)
+                wait_elapsed = current_time - last
+                if wait_elapsed > max_wait_elapsed:
+                    max_wait_elapsed = wait_elapsed
+                    starved_lane = lane
 
-                remaining = traci.trafficlight.getNextSwitch(tls_id) - current_time
-            
-                # Case 1: Extend already green light
-                if self.is_lane_green(tls_id, lane_id) and remaining < self.extend_time:
-                    traci.trafficlight.setPhaseDuration(tls_id, self.extend_time)
+            if starved_lane and max_wait_elapsed >= self.max_wait:
+                target_phase_idx = None
+                for p_idx, p in enumerate(phases):
+                    p_state = p.state
+                    for link_idx, links in enumerate(controlled):
+                        if link_idx < len(p_state) and p_state[link_idx] in ("G", "g"):
+                            if any(link[0] == starved_lane for link in links):
+                                target_phase_idx = p_idx
+                                break
+                    if target_phase_idx is not None:
+                        break
+
+                if target_phase_idx is not None:
+                    traci.trafficlight.setPhase(tls_id, int(target_phase_idx))
+                    traci.trafficlight.setPhaseDuration(tls_id, self.extend_time * 2)
+                    self.tls_last_switch[tls_id] = current_time
+                    new_state = traci.trafficlight.getRedYellowGreenState(tls_id)
+                    new_controlled = traci.trafficlight.getControlledLinks(tls_id)
+                    for i, links in enumerate(new_controlled):
+                        if i < len(new_state) and new_state[i] in ("G", "g"):
+                            for inc, _, _ in links:
+                                self.lane_last_green[inc] = current_time
                     self.spat_message_log(
-                        f"Vehicle {v_id} approaching {tls_id}, extending GREEN for {self.extend_time}s.",
-                        event_type="EXTEND_GREEN",
+                        f"Starvation: switched phase {phase} -> {target_phase_idx} to serve {starved_lane} (wait={max_wait_elapsed:.1f}s)",
+                        event_type="FORCED_GREEN",
                     )
                     return
-                
-                # Case 2: Turn green if only one lane is approaching
-                if len(approaching) == 1 and lane_id in approaching:
-                    if not self.is_lane_green(tls_id, lane_id):
-                        self.set_tls_green_for_vehicle(tls_id, v_id)
-                        traci.trafficlight.setPhaseDuration(tls_id, self.extend_time)
-                        self.tls_override_times[tls_id] = current_time
-                        self.spat_message_log(
-                            f"Only vehicles on lane {lane_id} near {tls_id}, switching to GREEN",
-                            event_type="SWITCH_GREEN",
-                        )
+                else:
+                    tls_state = list(traci.trafficlight.getRedYellowGreenState(tls_id))
+                    controlled_links = traci.trafficlight.getControlledLinks(tls_id)
+                    for i, links in enumerate(controlled_links):
+                        lane_found = any(link[0] == starved_lane for link in links)
+                        tls_state[i] = 'G' if lane_found else 'r'
+                    traci.trafficlight.setRedYellowGreenState(tls_id, sel.extend_time)
+                    self.tls_last_switch[tls_id] = current_time
+                    self.lane_last_green[starved_lane] = current_time
+                    self.spat_message_log(
+                        f"Starvation: RG override for {starved_lane} (wait={max_wait_elapsed:.1f}s) — fallback",
+                        event_type="FORCED_GREEN",
+                    )
                     return
-                
-                # Case 3: Turn light green if there is only one vehicle waiting for a lot of vehicles to pass
-                edge_counts = {edge: len(v_list) for edge, v_list in approaching.items()}
 
-                if edge_counts:
-                    max_edge = max(edge_counts, key = edge_counts.get)
-                    min_edge = min(edge_counts, key = edge_counts.get)
 
-                    max_count = edge_counts[max_edge]
-                    min_count = edge_counts[min_edge]
+        # 2. Extend green when vehicles are approaching on it
+        if cars_in_green > 0:
+            traci.trafficlight.setPhaseDuration(tls_id, self.extend_time)
+            self.spat_message_log(
+                f"{cars_in_green} cars on green → extending",
+                event_type="EXTEND_GREEN"
+            )
+            return
 
-                    if (min_count > 0 and min_count <= 3) and max_count - min_count > 5:
-                        v_id = approaching[min_edge][0]
-                        if not self.is_lane_green(tls_id,lane_id):
-                            self.set_tls_green_for_vehicle(tls_id,v_id)
-                            traci.trafficlight.setPhaseDuration(tls_id, self.extend_time)
-                            self.tls_override_times[tls_id] = current_time
-                            self.spat_message_log(
-                                f"Imbalance detected at {tls_id}, granting short green for lane {min_edge}",
-                                event_type="IMBALANCE",
-                            )
-        return
+        # 3. Green has no cars but others are waiting
+        if cars_in_green == 0 and cars_elsewhere > 0:
+            next_phase = (phase + 1) % len(phases)
+            traci.trafficlight.setPhase(tls_id, next_phase)
+            traci.trafficlight.setPhaseDuration(tls_id, self.extend_time)
+            self.tls_last_switch[tls_id] = current_time
+
+            new_state = traci.trafficlight.getRedYellowGreenState(tls_id)
+            new_controlled = traci.trafficlight.getControlledLinks(tls_id)
+            for i, links in enumerate(new_controlled):
+                if i < len(new_state) and new_state[i] in ("G", "g"):
+                    for inc, _, _ in links:
+                        self.lane_last_green[inc] = current_time
+
+            self.spat_message_log(
+                f"No cars on green but {cars_elsewhere} cars elsewhere → switching phase",
+                event_type="SWITCH_GREEN"
+            )
+            return
+
+        
+
+            ''''''
+
+        # 4. Force switch if green phase has been on for too long
+        if time_in_phase >= self.extend_time:
+            next_phase = (phase + 1) % len(phases)
+            traci.trafficlight.setPhase(tls_id, next_phase)
+            traci.trafficlight.setPhaseDuration(tls_id, self.extend_time)
+            self.tls_last_switch[tls_id] = current_time
+
+            new_state = traci.trafficlight.getRedYellowGreenState(tls_id)
+            new_controlled = traci.trafficlight.getControlledLinks(tls_id)
+            for i, links in enumerate(new_controlled):
+                if i < len(new_state) and new_state[i] in ("G", "g"):
+                    for inc, _, _ in links:
+                        self.lane_last_green[inc] = current_time
+
+            self.spat_message_log(
+                f"Phase {phase} exceeded max green → switching to {next_phase}",
+                event_type="FORCED_SWITCH"
+            )
+            return
     
     def _appply_rl_action(self, tls_id, tl_action):
         current_phase = traci.trafficlight.getPhase(tls_id)
@@ -372,4 +415,6 @@ class DynamicTLS(BaseV2XFeature):
         self._tls_log_events.clear()
         self._last_phases = {tls_id: traci.trafficlight.getPhase(tls_id) for tls_id in traci.trafficlight.getIDList()}
         self.phase_time = 0
+        self.lane_last_green.clear()
+        self.tls_last_switch.clear()
         logger.debug(f"[{self.feature_name}] Reset")
