@@ -6,28 +6,10 @@ import pandas as pd
 import sumolib
 import logging
 
-from data_collector import vehicle_filename
+from data_collector import baseline_filename, v2x_filename, data_dir_name
 from pathlib import Path
 
 logger = logging.getLogger("v2x")
-
-def find_latest(root_dir: Path, pattern: str):
-    candidates = list(root_dir.rglob(pattern))
-    if not candidates:
-        return None
-    candidates.sort(key=lambda f: f.stat().st_mtime, reverse=True)
-    return candidates[0]
-
-
-def find_latest_csv(root_dir: Path, filename=vehicle_filename):
-    """Find latest CSV within the project (same behavior as plots.py)."""
-    return find_latest(root_dir, filename)
-
-
-def find_latest_sumocfg(root_dir: Path, pattern="*.sumocfg"):
-    """Find the most recently modified SUMO config."""
-    return find_latest(root_dir, pattern)
-
 
 def _find_net_path_from_sumocfg(sumo_cfg_path: Path) -> Path:
     """Extract the net-file path from a SUMO .sumocfg file."""
@@ -69,27 +51,24 @@ def compute_edge_min_speed(df: pd.DataFrame):
         raise ValueError("DataFrame must have columns: edge, speed")
 
     d = df.copy()
-    d["edge"] = d["edge"].astype(str)
-    d = d[d["edge"].str.len() > 0]
+    d = df[df["speed"] > 0].copy()
 
     gb = d.groupby("edge")["speed"]
     out = gb.min().rename("min_speed").to_frame()
     out["hits"] = gb.size()
-    out = out[out["min_speed"] > 0].reset_index()
-    return out
-
+    return out.reset_index()
 
 def plot_min_speed_map(
-        df: pd.DataFrame,
-        sumo_config: Path,
-        out_path: Path,
-        background_path: Path | None = None,
-        cmap_name: str = "viridis",
-        linewidth_base: float = 1.6,
-        linewidth_by_hits: bool = True,
-        hits_scale: float = 0.45,
-        top_n_labels: int = 0,
-        title: str = "Minimum speed per edge (geographic)"
+    df: pd.DataFrame,
+    sumo_config: Path,
+    out_path: Path,
+    background_path: Path | None = None,
+    cmap_name: str = "viridis",
+    linewidth_base: float = 1.6,
+    linewidth_by_hits: bool = True,
+    hits_scale: float = 0.45,
+    top_n_labels: int = 0,
+    title: str = "Minimum speed per edge (geographic)"
 ):
     """Draw the SUMO network colored by per-edge minimum speed."""
     stats = compute_edge_min_speed(df)
@@ -100,11 +79,11 @@ def plot_min_speed_map(
         print("No edge metrics found.")
         return
 
-    net_path = _find_net_path_from_sumocfg(Path(sumo_config))
+    net_path = _find_net_path_from_sumocfg(sumo_config)
     net = sumolib.net.readNet(str(net_path))
     xmin, ymin, xmax, ymax = _net_bbox_from_shapes(net)
 
-    vmin, vmax = 2, 20
+    vmin, vmax = 3, 12
     cmap = mpl.colormaps.get_cmap(cmap_name)
     norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
 
@@ -112,7 +91,33 @@ def plot_min_speed_map(
 
     if background_path and Path(background_path).exists():
         img = plt.imread(background_path)
-        ax.imshow(img, extent=[xmin, xmax, ymin, ymax], origin="lower", alpha=0.65)
+        ax.imshow(
+            img,
+            extent=[xmin, xmax, ymin, ymax],
+            origin="lower",
+            alpha=0.65,
+            zorder=0,
+        )
+
+    for e in net.getEdges():
+        if not _is_real_edge(e):
+            continue
+
+        shp = e.getShape()
+        if not shp or len(shp) < 2:
+            continue
+
+        xs, ys = zip(*shp)
+
+        ax.plot(
+            xs,
+            ys,
+            color="lightgray",
+            linewidth=0.6,
+            alpha=0.5,
+            solid_capstyle="round",
+            zorder=1,
+        )
 
     labels = [] if top_n_labels > 0 else None
 
@@ -134,7 +139,15 @@ def plot_min_speed_map(
             lw += hits_scale * math.log10(hits)
 
         xs, ys = zip(*shp)
-        ax.plot(xs, ys, color=color, linewidth=lw, solid_capstyle="round", alpha=0.95)
+        ax.plot(
+            xs,
+            ys,
+            color=color,
+            linewidth=lw,
+            solid_capstyle="round",
+            alpha=0.95,
+            zorder=2,
+        )
 
         if labels is not None:
             mid = len(xs) // 2
@@ -148,17 +161,15 @@ def plot_min_speed_map(
     if labels:
         labels.sort(key=lambda t: t[0])  # slowest first
         for val, x, y, eid in labels[:top_n_labels]:
-            ax.text(x, y, f"{eid}\n{val:.1f} m/s", fontsize=8,
-                    ha="center", va="center")
+            ax.text(x,y,f"{eid}\n{val:.1f} m/s",fontsize=8,ha="center",va="center",zorder=3,)
 
-    ax.set_xlim([xmin, xmax]);
+    ax.set_xlim([xmin, xmax])
     ax.set_ylim([ymin, ymax])
     ax.set_aspect("equal", adjustable="box")
-    ax.set_xticks([]);
+    ax.set_xticks([])
     ax.set_yticks([])
     ax.set_title(title)
     plt.tight_layout()
-
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     plt.savefig(out_path, dpi=180)
@@ -166,10 +177,10 @@ def plot_min_speed_map(
     logger.info(f"Saved geographic plot to: {out_path}")
 
 
-def generate_geo_plot(csv_path: Path, sumo_cfg_path: Path, output_name: str):
-    """load CSV and generate a geographic min-speed plot."""
-    df = pd.read_csv(csv_path, low_memory=False)
-    out_dir = csv_path.parent
+def generate_geo_plot(parquet_path: Path, sumo_cfg_path: Path, output_name: str):
+    """load parquet and generate a geographic min-speed plot."""
+    df = pd.read_parquet(parquet_path)
+    out_dir = parquet_path.parent
     out_path = out_dir / output_name
 
     plot_min_speed_map(
@@ -199,11 +210,9 @@ def compare_geo_plots(data_dir: Path):
     fig, axes = plt.subplots(1, 2, figsize=(18, 9))
 
     axes[0].imshow(img_base)
-    axes[0].set_title("Baseline")
     axes[0].axis("off")
 
     axes[1].imshow(img_v2x)
-    axes[1].set_title("V2X")
     axes[1].axis("off")
 
     out_path = data_dir / "min_speed_comparison.png"
@@ -215,27 +224,22 @@ def compare_geo_plots(data_dir: Path):
 
 
 def main():
-    src_root = Path(__file__).resolve().parents[1]
-    project_root = src_root.parent
+    project_root = Path(__file__).resolve().parents[2]
+    data_dir = project_root / data_dir_name
 
-    data_dir = src_root / "data"
-
-    params_path = data_dir / vehicle_filename
-    baseline_path = data_dir / f"{Path(vehicle_filename).stem}_baseline.csv"
+    baseline_path = data_dir / baseline_filename
+    v2x_path = data_dir / v2x_filename
 
     sumo_cfg_path = project_root / "config" / "simulation.sumocfg"
     if not sumo_cfg_path.exists():
         raise FileNotFoundError(f"Expected config file not found: {sumo_cfg_path}")
-    if not sumo_cfg_path:
-        print("ERROR: No .sumocfg found.")
-        return
 
     print(f"Using SUMO config: {sumo_cfg_path}")
-    print(f"Looking for CSVs in: {data_dir}")
+    print(f"Looking for parquet files in: {data_dir}")
 
-    if params_path.exists():
+    if v2x_path.exists():
         print("Generating geographic plot for V2X run...")
-        generate_geo_plot(params_path, sumo_cfg_path, "min_speed_V2X.png")
+        generate_geo_plot(v2x_path, sumo_cfg_path, "min_speed_V2X.png")
     else:
         print("No {vehicle_filename} — skipping V2X plot")
 
@@ -243,9 +247,9 @@ def main():
         print("Generating geographic plot for BASELINE run...")
         generate_geo_plot(baseline_path, sumo_cfg_path, "min_speed_baseline.png")
     else:
-        print(f"No {Path(vehicle_filename).stem}_baseline.csv found — skipping baseline plot")
+        print(f"No {Path(baseline_filename).stem}_baseline.parquet found — skipping baseline plot")
 
-    if params_path.exists() and baseline_path.exists():
+    if v2x_path.exists() and baseline_path.exists():
         try:
             compare_geo_plots(data_dir)
         except Exception as e:

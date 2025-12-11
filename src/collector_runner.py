@@ -1,11 +1,13 @@
 import libsumo as traci
 import logging
+import argparse
+import sys
 
 from pathlib import Path
 from simulation_runner import SimulationRunner
 from base_sumo_env import BaseSumoEnvironment
-from data_collector import DataCollector, vehicle_filename
-from analysis import correlation_map, geo_plots, plots
+from data_collector import DataCollector, baseline_filename, v2x_filename, data_dir_name
+from analysis import correlation_map, geo_emissions_plot, geo_plots, plots
 
 logger = logging.getLogger("v2x")
 
@@ -31,6 +33,8 @@ class RunnerWithCollector(SimulationRunner):
 
         except traci.exceptions.FatalTraCIError as e:
             logger.error(f"Fatal TraCI error occurred. Ending simulation: {e}")
+
+        self.collector.flush()
 
     def run_with_steps(self):
         for step in range(self.simulation_steps):
@@ -69,10 +73,35 @@ def run_once(config_path: str, steps: int | None, gui: bool,
     runner.start_simulation()
 
 def main():
+    #Extend argument parsing to include max points
+    temp_parser = argparse.ArgumentParser(add_help=False)
+    temp_parser.add_argument(
+        "--max-points",
+        type=int,
+        default=200000,
+        help="Maximum number of sampled points used in plotting"
+    )
+    local_args, remained_argv = temp_parser.parse_known_args()
+    max_points = local_args.max_points
+    sys.argv = [sys.argv[0]] + remained_argv
     args = SimulationRunner.parse_arguments()
     cfg = resolve_config()
 
-    baseline_collector = DataCollector(batch_size=1000, reset_on_start=True)
+    if not(args.bsm or args.tls or args.priority or args.reroute):
+         raise ValueError(f"\nNo v2x features enabled\n"
+         "At least one of --bsm --tls --priority --reroute must be true")
+
+    project_root = Path(__file__).resolve().parents[1]
+    data_dir = project_root / data_dir_name
+    baseline_path = data_dir / baseline_filename
+    v2x_path = data_dir / v2x_filename
+
+    if baseline_path.exists():
+        raise ValueError(f"\nBaseline file exists.Delete {baseline_path} before rerunning")
+    if v2x_path.exists():
+        raise ValueError(f"\nV2X file exists.Delete {v2x_path} before rerunning")
+
+    baseline_collector = DataCollector(output_filename=baseline_filename,reset_on_start=True)
     run_once(
         config_path=cfg,
         steps=args.steps,
@@ -81,13 +110,7 @@ def main():
         collector=baseline_collector
     )
 
-    src_dir = Path(__file__).resolve().parent
-    csv_path = src_dir / "data" / vehicle_filename
-    baseline_path = src_dir / "data" / f"{Path(vehicle_filename).stem}_baseline.csv"
-    if csv_path.exists():
-        csv_path.rename(baseline_path)
-
-    params_collector = DataCollector(batch_size=1000, reset_on_start=True)
+    params_collector = DataCollector(output_filename=v2x_filename,reset_on_start=True)
     run_once(
         config_path=cfg,
         steps=args.steps,
@@ -97,9 +120,10 @@ def main():
     )
 
     print(f"\n\n\nGenerating Plots")
-    plots.main()
+    plots.main(max_points=max_points)
     correlation_map.main()
     geo_plots.main()
+    geo_emissions_plot.main()
     print(f"All plots generated successfully")
 
 if __name__ == "__main__":
