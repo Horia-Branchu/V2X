@@ -31,7 +31,8 @@ def main():
         tls=args.tls,
         bsm=args.bsm,
         priority=False,
-        reroute=False
+        reroute=False,
+        rl=True
     )
 
     feature_name = enabled_features[0]
