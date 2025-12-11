@@ -9,6 +9,7 @@ def main():
     parser = argparse.ArgumentParser(description="Run RL features")
     parser.add_argument("--tls", action="store_true", help="Run TLS feature")
     parser.add_argument("--bsm", action="store_true", help="Run BSM feature")
+    parser.add_argument("--gui", action="store_true", help="Start simulation in GUI")
     args = parser.parse_args()
 
     enabled_features = []
@@ -27,7 +28,7 @@ def main():
     # Create environment
     env = BaseSumoEnvironment(
         "config/simulation.sumocfg",
-        gui=False,
+        gui=args.gui,
         tls=args.tls,
         bsm=args.bsm,
         priority=False,
