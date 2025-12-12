@@ -17,7 +17,7 @@ def main():
     if args.tls: enabled_features.append("tls")
 
     if len(enabled_features) == 0:
-        print("ERROR: Please specify one feature for RL testing!")
+        print(f"ERROR: Please specify one feature for RL testing!\nPlease choose one of the following --tls --bsm --gui")
         exit(68)
 
     if len(enabled_features) > 1:
