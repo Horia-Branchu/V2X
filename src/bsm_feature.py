@@ -62,6 +62,7 @@ class BSMFeature(BaseV2XFeature):
         self,
         feature_name: str = "BSMFeature",
         enabled: bool = True,
+        rl_mode: bool = False,
         min_gap: float = DEFAULT_MIN_GAP,
         time_to_collision_threshold_s: float = DEFAULT_TIME_TO_COLLISION_THRESHOLD,
         leader_decel_threshold_meters_per_second_squared: float = DEFAULT_LEADER_DECEL_THRESHOLD,
@@ -72,6 +73,7 @@ class BSMFeature(BaseV2XFeature):
     ):
         super().__init__(enabled)
         self.feature_name = feature_name
+        self.rl_mode = rl_mode
         self.min_gap = float(min_gap)
         self.time_to_collision_threshold_s = float(time_to_collision_threshold_s)
         self.leader_decel_threshold_meters_per_second_squared = float(leader_decel_threshold_meters_per_second_squared)
@@ -151,11 +153,7 @@ class BSMFeature(BaseV2XFeature):
                 continue
             
             rel_speed = max(self.PARAM_MIN_VALUE, follower_speed - leader_speed)
-            
-            if rel_speed > self.MIN_RELATIVE_SPEED_THRESHOLD:
-                time_to_collision = gap / rel_speed
-            else:
-                time_to_collision = float('inf')
+            time_to_collision = self._calculate_time_to_collision(gap, follower_speed, leader_speed)
             
             vehicle_pair_count += 1
             total_gap += gap
@@ -219,18 +217,22 @@ class BSMFeature(BaseV2XFeature):
             rel_speed = max(self.PARAM_MIN_VALUE, follower_speed - leader_speed)
             
             # Calculate time to collision
-            if rel_speed > self.MIN_RELATIVE_SPEED_THRESHOLD:
-                time_to_collision = gap / rel_speed
-            else:
-                time_to_collision = float('inf')
+            time_to_collision = self._calculate_time_to_collision(gap, follower_speed, leader_speed)
             
             # Penalize low time-to-collision values
             if time_to_collision < self.time_to_collision_threshold_s:
                 total_time_to_collision_penalty += (self.time_to_collision_threshold_s - time_to_collision)
                 critical_time_to_collision_count += 1
             
-            # Reward safe following distances
-            if gap > self.min_gap * self.SAFE_GAP_MULTIPLIER:
+            # Reward safe following distances (consider vehicle speed)
+            # For stationary or slow-moving vehicles, smaller gaps are acceptable
+            # This addresses the concern that RL agents would be punished for maintaining
+            # appropriate gaps at stoplights where vehicles naturally cluster closer together
+            # Scale minimum gap requirement based on speed: slower vehicles can maintain smaller gaps safely
+            speed_factor = max(0.3, min(1.0, follower_speed / 15.0))  # Scale from 0.3 to 1.0 based on speed (0-15 m/s)
+            speed_adjusted_min_gap = self.min_gap * speed_factor
+            
+            if gap > speed_adjusted_min_gap * self.SAFE_GAP_MULTIPLIER:
                 safe_gap_bonus += self.SAFE_GAP_BONUS_VALUE
         
         reward = (
@@ -251,6 +253,24 @@ class BSMFeature(BaseV2XFeature):
 
     def get_feature_name(self) -> str:
         return self.feature_name
+
+    def _calculate_time_to_collision(self, gap: float, follower_speed: float, leader_speed: float) -> float:
+        """Calculate time to collision given gap and speeds
+        
+        Args:
+            gap: Distance between vehicles in meters
+            follower_speed: Speed of following vehicle in m/s
+            leader_speed: Speed of leading vehicle in m/s
+            
+        Returns:
+            Time to collision in seconds, or float('inf') if vehicles are not approaching
+        """
+        rel_speed = max(self.PARAM_MIN_VALUE, follower_speed - leader_speed)
+        
+        if rel_speed > self.MIN_RELATIVE_SPEED_THRESHOLD:
+            return gap / rel_speed
+        else:
+            return float('inf')
 
     def _apply_rl_parameters(self, params):
         alpha = np.clip(float(params[0]), self.PARAM_MIN_VALUE, self.PARAM_MAX_VALUE)
@@ -307,9 +327,7 @@ class BSMFeature(BaseV2XFeature):
                 continue
 
             relative_speed_meters_per_second = max(self.PARAM_MIN_VALUE, follower_speed_meters_per_second - leader_speed_meters_per_second)
-            time_to_collision_s = (
-                distance_to_leader_m / relative_speed_meters_per_second if relative_speed_meters_per_second > self.MIN_RELATIVE_SPEED_THRESHOLD else float("inf")
-            )
+            time_to_collision_s = self._calculate_time_to_collision(distance_to_leader_m, follower_speed_meters_per_second, leader_speed_meters_per_second)
 
             gap_trigger = (distance_to_leader_m < self.min_gap)
             time_to_collision_trigger = (
@@ -406,9 +424,8 @@ class BSMFeature(BaseV2XFeature):
                 for verbose, _ in events[typ]:
                     logger.info(verbose)
 
-    # O(n), utilizes get leader function from TRACI api, if there is no leader ahead of a car then it skips the checks for it
-    # changes were made to differentiate between situations that trigger any sort of slowdown so that the logs are clearer
     def take_action(self, action):
+        """Main action method that delegates to RL or rule-based implementation"""
         if not self.enable:
             return
 
@@ -416,40 +433,40 @@ class BSMFeature(BaseV2XFeature):
         self._slowdown_count = 0
         self._critical_time_to_collision_count = 0
 
-        # Mode detection: check if action is a dictionary (RL mode) or not (rule-based mode)
-        rl_mode = False
+        if self.rl_mode:
+            self._take_rl_action(action)
+        else:
+            self._take_rule_based_action()
+
+    def _take_rl_action(self, action):
+        """Handle RL actions with dictionary format"""
         try:
-            rl_mode = isinstance(action, dict)
-            if rl_mode:
-                # Validate dictionary structure
-                if "bsm_action" not in action or "params" not in action:
-                    logger.warning(
-                        f"[{self.feature_name}] Invalid action dict (missing keys), using rule-based mode"
-                    )
-                    rl_mode = False
+            # Validate dictionary structure
+            if not isinstance(action, dict) or "bsm_action" not in action or "params" not in action:
+                logger.warning(
+                    f"[{self.feature_name}] Invalid RL action format, falling back to rule-based mode"
+                )
+                self._take_rule_based_action()
+                return
+
+            bsm_action = action["bsm_action"]
+            params = action["params"]
+            
+            logger.debug(
+                f"[{self.feature_name}] RL mode: action={bsm_action}, params={params}"
+            )
+
+            self._apply_rl_parameters(params)
+            self._apply_rl_action(bsm_action)
+            
         except Exception as e:
             logger.warning(
-                f"[{self.feature_name}] Action processing error: {e}, using rule-based mode"
+                f"[{self.feature_name}] RL action execution failed: {e}, falling back to rule-based mode"
             )
-            rl_mode = False
+            self._take_rule_based_action()
 
-        if rl_mode:
-            try:
-                bsm_action = action["bsm_action"]
-                params = action["params"]
-                
-                logger.debug(
-                    f"[{self.feature_name}] RL mode: action={bsm_action}, params={params}"
-                )
-
-                self._apply_rl_parameters(params)
-                self._apply_rl_action(bsm_action)
-                return
-            except Exception as e:
-                logger.warning(
-                    f"[{self.feature_name}] RL action execution failed: {e}, falling back to rule-based mode"
-                )
-                
+    def _take_rule_based_action(self):
+        """Handle rule-based actions using predefined logic"""
         current_time_s = traci.simulation.getTime()
         
         events = {
@@ -475,10 +492,7 @@ class BSMFeature(BaseV2XFeature):
                 continue
 
             relative_speed_meters_per_second = max(self.PARAM_MIN_VALUE, follower_speed_meters_per_second - leader_speed_meters_per_second)
-            time_to_collision_s = (
-                distance_to_leader_m / relative_speed_meters_per_second if relative_speed_meters_per_second > self.MIN_RELATIVE_SPEED_THRESHOLD else float("inf")
-            )
-
+            time_to_collision_s = self._calculate_time_to_collision(distance_to_leader_m, follower_speed_meters_per_second, leader_speed_meters_per_second)
 
             gap_trigger = (distance_to_leader_m < self.min_gap)
             time_to_collision_trigger = (
