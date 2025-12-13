@@ -10,20 +10,65 @@ logger = logging.getLogger("v2x.features")
 
 #improved variable names to make their purpose more obvious and make the application be overall more readable from a 3rd person's pov
 class BSMFeature(BaseV2XFeature):
+    # Time and interval constants
     DEFAULT_LAST_BRAKE_TIME = -10.0
     MIN_BRAKE_INTERVAL_S = 0.5
     PREEMPTIVE_SLOWDOWN_FACTOR = 0.7
+    
+    # Observation space constants
+    OBSERVATION_SPACE_SIZE = 5
+    ACTION_SPACE_SIZE = 1
+    ACTION_DISCRETE_COUNT = 3
+    ACTION_PARAMS_COUNT = 3
+    
+    # Observation bounds
+    OBSERVATION_LOW_BOUNDS = [0.0, 0.0, 0.0, 0.0, 0.0]
+    OBSERVATION_HIGH_BOUNDS = [100.0, 200.0, 50.0, 10.0, 100.0]
+    
+    # Parameter bounds
+    PARAM_MIN_VALUE = 0.0
+    PARAM_MAX_VALUE = 1.0
+    
+    # Calculation constants
+    MIN_RELATIVE_SPEED_THRESHOLD = 1e-3
+    MAX_TIME_TO_COLLISION_CAP = 10.0
+    SAFE_GAP_MULTIPLIER = 2
+    SAFE_GAP_BONUS_VALUE = 0.1
+    
+    # Default values for initialization
+    DEFAULT_MIN_GAP = 10.0
+    DEFAULT_TIME_TO_COLLISION_THRESHOLD = 1.5
+    DEFAULT_LEADER_DECEL_THRESHOLD = -4.0
+    DEFAULT_BRAKE_DURATION = 1.0
+    DEFAULT_MAX_REACT_GAP = 60.0
+    DEFAULT_MAX_TIME_TO_COLLISION_GAP = 80.0
+    DEFAULT_MAX_DECEL_GAP = 60.0
+    
+    # Range constants for RL parameters
+    MIN_DETECTION_RANGE = 20.0
+    MAX_DETECTION_RANGE = 100.0
+    MIN_TIME_TO_COLLISION_THRESHOLD = 0.5
+    MAX_TIME_TO_COLLISION_THRESHOLD = 3.0
+    MIN_BRAKE_DURATION = 0.5
+    MAX_BRAKE_DURATION = 2.0
+    
+    # Reward weight constants
+    WEIGHT_TIME_TO_COLLISION = 2.0
+    WEIGHT_BRAKE = 0.5
+    WEIGHT_CRITICAL = 5.0
+    WEIGHT_SAFE = 0.2
+    SLOWDOWN_WEIGHT_FACTOR = 0.5
     def __init__(
         self,
         feature_name: str = "BSMFeature",
         enabled: bool = True,
-        min_gap: float = 10.0,
-        time_to_collision_threshold_s: float = 1.5,
-        leader_decel_threshold_meters_per_second_squared: float = -4.0,
-        brake_duration_s: float = 1.0,
-        max_react_gap_m: float = 60.0,
-        max_time_to_collision_gap_m: float = 80.0,
-        max_decel_gap_m: float = 60.0,
+        min_gap: float = DEFAULT_MIN_GAP,
+        time_to_collision_threshold_s: float = DEFAULT_TIME_TO_COLLISION_THRESHOLD,
+        leader_decel_threshold_meters_per_second_squared: float = DEFAULT_LEADER_DECEL_THRESHOLD,
+        brake_duration_s: float = DEFAULT_BRAKE_DURATION,
+        max_react_gap_m: float = DEFAULT_MAX_REACT_GAP,
+        max_time_to_collision_gap_m: float = DEFAULT_MAX_TIME_TO_COLLISION_GAP,
+        max_decel_gap_m: float = DEFAULT_MAX_DECEL_GAP,
     ):
         super().__init__(enabled)
         self.feature_name = feature_name
@@ -35,55 +80,60 @@ class BSMFeature(BaseV2XFeature):
         self.max_time_to_collision_gap_m = float(max_time_to_collision_gap_m)
         self.max_decel_gap_m = float(max_decel_gap_m)
 
-        self.min_detection_range = 20.0
-        self.max_detection_range = 100.0
-        self.min_time_to_collision_threshold = 0.5
-        self.max_time_to_collision_threshold = 3.0
-        self.min_brake_duration = 0.5
-        self.max_brake_duration = 2.0
+        self.min_detection_range = self.MIN_DETECTION_RANGE
+        self.max_detection_range = self.MAX_DETECTION_RANGE
+        self.min_time_to_collision_threshold = self.MIN_TIME_TO_COLLISION_THRESHOLD
+        self.max_time_to_collision_threshold = self.MAX_TIME_TO_COLLISION_THRESHOLD
+        self.min_brake_duration = self.MIN_BRAKE_DURATION
+        self.max_brake_duration = self.MAX_BRAKE_DURATION
 
         self._emergency_brake_count = 0
         self._slowdown_count = 0
         self._critical_time_to_collision_count = 0
 
         # Reward weights for different safety metrics
-        self.weight_time_to_collision = 2.0        
-        self.weight_brake = 0.5      
-        self.weight_critical = 5.0   
-        self.weight_safe = 0.2       
-        self.slowdown_weight_factor = 0.5  
+        self.weight_time_to_collision = self.WEIGHT_TIME_TO_COLLISION
+        self.weight_brake = self.WEIGHT_BRAKE
+        self.weight_critical = self.WEIGHT_CRITICAL
+        self.weight_safe = self.WEIGHT_SAFE
+        self.slowdown_weight_factor = self.SLOWDOWN_WEIGHT_FACTOR
 
-        self.observation_size = 5
-        self.action_size = 1
+        self.observation_size = self.OBSERVATION_SPACE_SIZE
+        self.action_size = self.ACTION_SPACE_SIZE
         self._last_brake_step = {}
 
     def get_observation_space(self) -> gym.Space:
         return gym.spaces.Box(
-            low=np.array([0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float32),
-            high=np.array([100.0, 200.0, 50.0, 10.0, 100.0], dtype=np.float32),
-            shape=(5,),
+            low=np.array(self.OBSERVATION_LOW_BOUNDS, dtype=np.float32),
+            high=np.array(self.OBSERVATION_HIGH_BOUNDS, dtype=np.float32),
+            shape=(self.OBSERVATION_SPACE_SIZE,),
             dtype=np.float32
         )
 
     def get_action_space(self) -> gym.Space:
         return gym.spaces.Dict({
-            "bsm_action": gym.spaces.Discrete(3),
-            "params": gym.spaces.Box(low=0.0, high=1.0, shape=(3,), dtype=np.float32)
+            "bsm_action": gym.spaces.Discrete(self.ACTION_DISCRETE_COUNT),
+            "params": gym.spaces.Box(
+                low=self.PARAM_MIN_VALUE, 
+                high=self.PARAM_MAX_VALUE, 
+                shape=(self.ACTION_PARAMS_COUNT,), 
+                dtype=np.float32
+            )
         })
 
     def get_observation(self) -> np.ndarray:
         if not self.enable:
-            return np.zeros(5, dtype=np.float32)
+            return np.zeros(self.OBSERVATION_SPACE_SIZE, dtype=np.float32)
         
         vehicle_ids = traci.vehicle.getIDList()
         if len(vehicle_ids) == 0:
-            return np.zeros(5, dtype=np.float32)
+            return np.zeros(self.OBSERVATION_SPACE_SIZE, dtype=np.float32)
         
         # Collect metrics across all vehicle pairs
         vehicle_pair_count = 0
-        total_gap = 0.0
-        total_rel_speed = 0.0
-        total_time_to_collision = 0.0
+        total_gap = self.PARAM_MIN_VALUE
+        total_rel_speed = self.PARAM_MIN_VALUE
+        total_time_to_collision = self.PARAM_MIN_VALUE
         
         for vehicle_id in vehicle_ids:
             leader_data = traci.vehicle.getLeader(vehicle_id, dist=self.max_react_gap_m)
@@ -100,9 +150,9 @@ class BSMFeature(BaseV2XFeature):
             except traci.TraCIException:
                 continue
             
-            rel_speed = max(0.0, follower_speed - leader_speed)
+            rel_speed = max(self.PARAM_MIN_VALUE, follower_speed - leader_speed)
             
-            if rel_speed > 1e-3:
+            if rel_speed > self.MIN_RELATIVE_SPEED_THRESHOLD:
                 time_to_collision = gap / rel_speed
             else:
                 time_to_collision = float('inf')
@@ -110,16 +160,16 @@ class BSMFeature(BaseV2XFeature):
             vehicle_pair_count += 1
             total_gap += gap
             total_rel_speed += rel_speed
-            total_time_to_collision += min(time_to_collision, 10.0)
+            total_time_to_collision += min(time_to_collision, self.MAX_TIME_TO_COLLISION_CAP)
         
         if vehicle_pair_count > 0:
             avg_gap_distance = total_gap / vehicle_pair_count
             avg_relative_speed = total_rel_speed / vehicle_pair_count
             avg_time_to_collision = total_time_to_collision / vehicle_pair_count
         else:
-            avg_gap_distance = 0.0
-            avg_relative_speed = 0.0
-            avg_time_to_collision = 0.0
+            avg_gap_distance = self.PARAM_MIN_VALUE
+            avg_relative_speed = self.PARAM_MIN_VALUE
+            avg_time_to_collision = self.PARAM_MIN_VALUE
         
        
         logger.debug(
@@ -139,15 +189,15 @@ class BSMFeature(BaseV2XFeature):
 
     def calculate_reward(self) -> float:
         if not self.enable:
-            return 0.0
+            return self.PARAM_MIN_VALUE
         
         vehicle_ids = traci.vehicle.getIDList()
         if len(vehicle_ids) == 0:
-            return 0.0
+            return self.PARAM_MIN_VALUE
         
-        total_time_to_collision_penalty = 0.0
+        total_time_to_collision_penalty = self.PARAM_MIN_VALUE
         critical_time_to_collision_count = 0
-        safe_gap_bonus = 0.0
+        safe_gap_bonus = self.PARAM_MIN_VALUE
         
         # Iterate through vehicle pairs and collect time-to-collision values
         for vehicle_id in vehicle_ids:
@@ -166,10 +216,10 @@ class BSMFeature(BaseV2XFeature):
                 continue
             
             # Calculate relative speed (only positive, approaching)
-            rel_speed = max(0.0, follower_speed - leader_speed)
+            rel_speed = max(self.PARAM_MIN_VALUE, follower_speed - leader_speed)
             
             # Calculate time to collision
-            if rel_speed > 1e-3:
+            if rel_speed > self.MIN_RELATIVE_SPEED_THRESHOLD:
                 time_to_collision = gap / rel_speed
             else:
                 time_to_collision = float('inf')
@@ -180,8 +230,8 @@ class BSMFeature(BaseV2XFeature):
                 critical_time_to_collision_count += 1
             
             # Reward safe following distances
-            if gap > self.min_gap * 2:
-                safe_gap_bonus += 0.1
+            if gap > self.min_gap * self.SAFE_GAP_MULTIPLIER:
+                safe_gap_bonus += self.SAFE_GAP_BONUS_VALUE
         
         reward = (
             -self.weight_time_to_collision * total_time_to_collision_penalty
@@ -203,15 +253,15 @@ class BSMFeature(BaseV2XFeature):
         return self.feature_name
 
     def _apply_rl_parameters(self, params):
-        alpha = np.clip(float(params[0]), 0.0, 1.0)
-        beta = np.clip(float(params[1]), 0.0, 1.0)
-        gamma = np.clip(float(params[2]), 0.0, 1.0)
+        alpha = np.clip(float(params[0]), self.PARAM_MIN_VALUE, self.PARAM_MAX_VALUE)
+        beta = np.clip(float(params[1]), self.PARAM_MIN_VALUE, self.PARAM_MAX_VALUE)
+        gamma = np.clip(float(params[2]), self.PARAM_MIN_VALUE, self.PARAM_MAX_VALUE)
         
-        if not (0.0 <= params[0] <= 1.0):
+        if not (self.PARAM_MIN_VALUE <= params[0] <= self.PARAM_MAX_VALUE):
             logger.debug(f"[{self.feature_name}] Clamped params[0] from {params[0]} to {alpha}")
-        if not (0.0 <= params[1] <= 1.0):
+        if not (self.PARAM_MIN_VALUE <= params[1] <= self.PARAM_MAX_VALUE):
             logger.debug(f"[{self.feature_name}] Clamped params[1] from {params[1]} to {beta}")
-        if not (0.0 <= params[2] <= 1.0):
+        if not (self.PARAM_MIN_VALUE <= params[2] <= self.PARAM_MAX_VALUE):
             logger.debug(f"[{self.feature_name}] Clamped params[2] from {params[2]} to {gamma}")
         
         self.max_react_gap_m = (
@@ -256,9 +306,9 @@ class BSMFeature(BaseV2XFeature):
             except traci.TraCIException:
                 continue
 
-            relative_speed_meters_per_second = max(0.0, follower_speed_meters_per_second - leader_speed_meters_per_second)
+            relative_speed_meters_per_second = max(self.PARAM_MIN_VALUE, follower_speed_meters_per_second - leader_speed_meters_per_second)
             time_to_collision_s = (
-                distance_to_leader_m / relative_speed_meters_per_second if relative_speed_meters_per_second > 1e-3 else float("inf")
+                distance_to_leader_m / relative_speed_meters_per_second if relative_speed_meters_per_second > self.MIN_RELATIVE_SPEED_THRESHOLD else float("inf")
             )
 
             gap_trigger = (distance_to_leader_m < self.min_gap)
@@ -292,7 +342,7 @@ class BSMFeature(BaseV2XFeature):
             for follower_id, leader_id, gap, time_to_collision in at_risk_pairs:
                 self._emergency_brake_count += 1
                 try:
-                    traci.vehicle.slowDown(follower_id, 0.0, self.brake_duration_s)
+                    traci.vehicle.slowDown(follower_id, self.PARAM_MIN_VALUE, self.brake_duration_s)
                     self._last_brake_step[follower_id] = current_time_s
                     logger.debug(
                         f"[{self.feature_name}] RL EMERGENCY_BRAKE: {follower_id} -> {leader_id} "
@@ -306,7 +356,7 @@ class BSMFeature(BaseV2XFeature):
                 self._slowdown_count += 1
                 try:
                     current_speed = traci.vehicle.getSpeed(follower_id)
-                    target_speed = max(0.0, current_speed * self.PREEMPTIVE_SLOWDOWN_FACTOR)
+                    target_speed = max(self.PARAM_MIN_VALUE, current_speed * self.PREEMPTIVE_SLOWDOWN_FACTOR)
                     traci.vehicle.slowDown(follower_id, target_speed, self.brake_duration_s)
                     self._last_brake_step[follower_id] = current_time_s
                     logger.debug(
@@ -424,9 +474,9 @@ class BSMFeature(BaseV2XFeature):
             except traci.TraCIException:
                 continue
 
-            relative_speed_meters_per_second = max(0.0, follower_speed_meters_per_second - leader_speed_meters_per_second)
+            relative_speed_meters_per_second = max(self.PARAM_MIN_VALUE, follower_speed_meters_per_second - leader_speed_meters_per_second)
             time_to_collision_s = (
-                distance_to_leader_m / relative_speed_meters_per_second if relative_speed_meters_per_second > 1e-3 else float("inf")
+                distance_to_leader_m / relative_speed_meters_per_second if relative_speed_meters_per_second > self.MIN_RELATIVE_SPEED_THRESHOLD else float("inf")
             )
 
 
@@ -474,13 +524,13 @@ class BSMFeature(BaseV2XFeature):
                     short = f"EMG:{vehicle_id}->{leader_id} gap={distance_to_leader_m:.1f}m"
                     events["EMERGENCY_BRAKE"].append((verbose, short))
                     try:
-                        traci.vehicle.slowDown(vehicle_id, 0.0, self.brake_duration_s)
+                        traci.vehicle.slowDown(vehicle_id, self.PARAM_MIN_VALUE, self.brake_duration_s)
                     except traci.TraCIException as e:
                         warn = f"[{self.feature_name}] brake failed for {vehicle_id}: {e}"
                         events["WARN"].append((warn, warn))
                         logger.warning(warn)
                 else:
-                    target_speed_meters_per_second = max(0.0, follower_speed_meters_per_second * self.PREEMPTIVE_SLOWDOWN_FACTOR)
+                    target_speed_meters_per_second = max(self.PARAM_MIN_VALUE, follower_speed_meters_per_second * self.PREEMPTIVE_SLOWDOWN_FACTOR)
                     verbose = (
                         f"[{self.feature_name}] PREEMPTIVE_SLOWDOWN: {vehicle_id} following {leader_id} "
                         f"(gap={distance_to_leader_m:.1f}m, time_to_collision={time_to_collision_display}, "
@@ -518,6 +568,6 @@ class BSMFeature(BaseV2XFeature):
             f"(leader={leader_id}, gap={gap:.1f}m, time_to_collision={time_to_collision_display}) @ {simulation_time:.1f}s"
         )
         try:
-            traci.vehicle.slowDown(vehicle_id, 0.0, self.brake_duration_s)
+            traci.vehicle.slowDown(vehicle_id, self.PARAM_MIN_VALUE, self.brake_duration_s)
         except traci.TraCIException as e:
             logger.warning(f"[{self.feature_name}] brake failed for {vehicle_id}: {e}")
