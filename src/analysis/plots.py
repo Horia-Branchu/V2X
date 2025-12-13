@@ -4,7 +4,7 @@ import seaborn as sns
 import argparse
 
 from pathlib import Path
-from data_collector import baseline_filename, v2x_filename, data_dir_name
+from data_collector import baseline_filename, v2x_filename, data_dir_name, rl_filename
 
 def plot_filename(x: str, y: str, suffix: str = "png") -> str:
     def clean(name: str) -> str:
@@ -289,18 +289,22 @@ def main(max_points):
 
     baseline_path = data_dir / baseline_filename
     v2x_path = data_dir / v2x_filename
+    rl_path = data_dir / rl_filename
 
     if not baseline_path.exists():
-        print(f"No {baseline_path} file found.")
-        return
+        raise FileNotFoundError(f"No {baseline_path} file found.")
 
-    if not v2x_path.exists():
-        print(f"Missing V2X file: {v2x_path}")
-        return
+    if v2x_path.exists() and rl_path.exists():
+        raise FileNotFoundError(f"Both V2X and RL files exists.\nPlease make sure to have just one")
+
+    if not v2x_path.exists() and not rl_path.exists():
+        raise FileNotFoundError(f"No V2X or RL parquet file found")
+
+    comparison_path = v2x_path if v2x_path.exists() else rl_path
 
     out_dir = data_dir
 
-    df_v2x = pd.read_parquet(v2x_path)
+    df_v2x = pd.read_parquet(comparison_path)
     df_v2x["run"] = "v2x"
 
     if baseline_path.exists():
@@ -313,11 +317,11 @@ def main(max_points):
         time_common = min(time_baseline_end, time_v2x_end)
 
         df = df[df["time"] <= time_common]
-        print(f"Using dataset: {baseline_path}\nv2x at {v2x_path}\n"
+        print(f"Using dataset: {baseline_path}\nv2x at {comparison_path}\n"
               f"Generating comparison plots (baseline vs v2x)")
     else:
         df = df_v2x
-        print(f"Using datasets: {v2x_path}\n"
+        print(f"Using datasets: {comparison_path}\n"
               f"(No {baseline_path.name} found, plotting single run.)")
 
     df_sampled = set_total_points(df, total_points=max_points)
