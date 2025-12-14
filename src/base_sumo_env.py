@@ -76,10 +76,10 @@ class BaseSumoEnvironment(gym.Env):
             self.features.append(DynamicTLS("DynamicTLS", rl_mode=self.rl))
 
         if priority:
+            self.features.append(PriorityCorridorFeature("PriorityCorridorFeature"))  # rule-based always runs
             if self.rl:
                 self.features.append(PriorityEnvironment("PriorityEnvironment"))
-            else:
-                self.features.append(PriorityCorridorFeature("PriorityCorridorFeature"))
+
         if reroute:
             self.features.append(DummyFeature("RerouteFeature"))
 
