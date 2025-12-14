@@ -4,8 +4,7 @@ import logging
 import sys
 import libsumo as traci
 from terminal_display import terminal_display
-from base_v2x_feature import BaseV2XFeature
-from gymnasium.spaces import Discrete, Box
+from features.base_v2x_feature import BaseV2XFeature
 
 # feature-level logger; routine per-step data goes to DEBUG, important events should use INFO
 logger = logging.getLogger("v2x.features")

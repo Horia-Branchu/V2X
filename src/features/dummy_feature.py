@@ -1,7 +1,7 @@
 import numpy as np
 import gymnasium as gym
 import logging
-from base_v2x_feature import BaseV2XFeature
+from features.base_v2x_feature import BaseV2XFeature
 
 # feature-level logger; routine per-step data goes to DEBUG, important events should use INFO
 logger = logging.getLogger("v2x.features")

@@ -4,8 +4,8 @@ import argparse
 import sys
 
 from pathlib import Path
-from simulation_runner import SimulationRunner
-from base_sumo_env import BaseSumoEnvironment
+from runners.simulation_runner import SimulationRunner
+from env.base_sumo_env import BaseSumoEnvironment
 from data_collector import DataCollector, baseline_filename, v2x_filename, data_dir_name
 from analysis import correlation_map, geo_emissions_plot, geo_plots, plots
 

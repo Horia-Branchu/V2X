@@ -6,7 +6,7 @@ import logging
 import sys
 import libsumo as traci
 
-from base_sumo_env import BaseSumoEnvironment
+from env.base_sumo_env import BaseSumoEnvironment
 from progress_bar import ProgressBar
 from terminal_display import terminal_display
 
@@ -249,7 +249,7 @@ def main():
     args = SimulationRunner.parse_arguments()
 
     script_dir = os.path.dirname(__file__)
-    sumo_config = os.path.join(script_dir, '..', 'config', 'simulation.sumocfg')
+    sumo_config = os.path.join(script_dir, '../..', 'config', 'simulation.sumocfg')
 
     env = BaseSumoEnvironment(
         sumo_config,
