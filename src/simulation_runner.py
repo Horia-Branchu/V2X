@@ -7,6 +7,7 @@ import sys
 import libsumo as traci
 
 from base_sumo_env import BaseSumoEnvironment
+from progress_bar import ProgressBar
 from terminal_display import terminal_display
 
 # use the project logger
@@ -25,6 +26,10 @@ class SimulationRunner:
             **kwargs: Additional arguments for the environment we work in
         """
         self.simulation_steps = steps
+        self.arrived_vehicles_until_current_step = 0
+        self.progress_bar = ProgressBar(logger)
+        self.progress_bar.load_trip_paths()
+        self.progress_bar.count_total_trips()
         if isinstance(sumo_env, BaseSumoEnvironment):
             # we were given an environment instance
             self.env = sumo_env
@@ -37,56 +42,102 @@ class SimulationRunner:
         logger.info("------ Feature testing mode ------")
         logger.info(f"active features: {[f.get_feature_name() for f in self.env.features]}")
 
-        obs, _ = self.env.reset()
+        self.env.reset()
 
         def simulation_logic(current_step):
             action = self.env.action_space.sample()
 
             # step the environment
-            obs, reward, terminated, truncated, info = self.env.step(action)
+            self.env._take_action(action)
+            traci.simulationStep()
 
-            if terminated or truncated:
-                obs, _ = self.env.reset()
+            # Log base environment metrics
+            current_time = traci.simulation.getTime()
+            vehicle_count = traci.vehicle.getIDCount()
+            msg = f"Time {current_time:.1f}s: Vehicles in simulation: {vehicle_count}"
+            terminal_display.update("ENV", msg)
+            terminal_display.render()
+
+            if self.env._is_terminated():
+                # obs, _ = self.env.reset()
                 logger.info(f"------ simulation reseted at step {current_step} ------")
 
         if self.simulation_steps is not None:
             for current_step in range(self.simulation_steps):
+                terminal_display.update("PROGRESSBAR",
+                                        self.progress_bar.display_string(current = current_step+1, end = self.simulation_steps,steps = True))
+                terminal_display.render()
                 simulation_logic(current_step)
+            terminal_display.finish()
+
         else:
             current_step = 0
-            while (traci.simulation.getMinExpectedNumber() != 0):
+            while traci.simulation.getMinExpectedNumber() != 0:
+                self.arrived_vehicles_until_current_step += traci.simulation.getArrivedNumber()
+                terminal_display.update("PROGRESSBAR",
+                                        self.progress_bar.display_string(self.arrived_vehicles_until_current_step))
+                terminal_display.render()
                 simulation_logic(current_step)
                 current_step += 1
-
+            self.arrived_vehicles_until_current_step += traci.simulation.getArrivedNumber()
+            terminal_display.update("PROGRESSBAR",
+                                    self.progress_bar.display_string(self.arrived_vehicles_until_current_step))
+            terminal_display.render()
+            self.arrived_vehicles_until_current_step = 0
+            terminal_display.finish()
         self.env.close()
 
     def test_specific_feature(self, feature_name):
         """Test a specific feature in isolation"""
         logger.info(f"------ Isolated feature testing: {feature_name} ------")
-        obs, _ = self.env.reset()
+
+        self.env.reset()
 
         def simulation_logic(current_step):
             # custom action logic for specific feature testing
             action = self._get_feature_specific_action(feature_name, current_step)
 
-            obs, reward, terminated, truncated, info = self.env.step(action)
+            self.env._take_action(action)
+            traci.simulationStep()
+
+            # Log base environment metrics
+            current_time = traci.simulation.getTime()
+            vehicle_count = traci.vehicle.getIDCount()
+            msg = f"Time {current_time:.1f}s: Vehicles in simulation: {vehicle_count}"
+            terminal_display.update("ENV", msg)
+            terminal_display.render()
 
             # per-step feature test message — verbose (use DEBUG so rule-based runs don't get spammed)
             logger.debug(f"Step {current_step}: {feature_name}")
 
-            if terminated or truncated:
+            if self.env._is_terminated():
                 return -1
 
         if self.simulation_steps is not None:
             for current_step in range(self.simulation_steps):
+                terminal_display.update("PROGRESSBAR",
+                                        self.progress_bar.display_string(current=current_step+1,
+                                                                         end=self.simulation_steps, steps=True))
+                terminal_display.render()
                 if simulation_logic(current_step) == -1:
                     break
+            terminal_display.finish()
         else:
             current_step = 0
-            while (traci.simulation.getMinExpectedNumber() != 0):
+            while traci.simulation.getMinExpectedNumber() != 0:
+                self.arrived_vehicles_until_current_step += traci.simulation.getArrivedNumber()
+                terminal_display.update("PROGRESSBAR",
+                                        self.progress_bar.display_string(self.arrived_vehicles_until_current_step))
+                terminal_display.render()
                 if simulation_logic(current_step) == -1:
                     break
                 current_step += 1
+            self.arrived_vehicles_until_current_step += traci.simulation.getArrivedNumber()
+            terminal_display.update("PROGRESSBAR",
+                                    self.progress_bar.display_string(self.arrived_vehicles_until_current_step))
+            terminal_display.render()
+            self.arrived_vehicles_until_current_step = 0
+            terminal_display.finish()
 
 
         self.env.close()
@@ -100,27 +151,30 @@ class SimulationRunner:
 
         try:
             traci.simulationStep()
-
-            current_time = traci.simulation.getTime()
             vehicle_count = traci.vehicle.getIDCount()
-            while (traci.simulation.getMinExpectedNumber() != 0 and vehicle_count != 0):
+            current_time = traci.simulation.getTime()
+            while traci.simulation.getMinExpectedNumber() != 0 and vehicle_count != 0:
                 traci.simulationStep()
                 current_time = traci.simulation.getTime()
                 vehicle_count = traci.vehicle.getIDCount()
 
                 msg = f"Time {current_time:.1f}s: Vehicles: {vehicle_count}"
-                terminal_display.update("RUNNER", msg)
+                terminal_display.update("ENV", msg)
                 terminal_display.render()
-
+                self.arrived_vehicles_until_current_step += traci.simulation.getArrivedNumber()
+                terminal_display.update("PROGRESSBAR",
+                                        self.progress_bar.display_string(self.arrived_vehicles_until_current_step))
+                terminal_display.render()
+            self.arrived_vehicles_until_current_step = 0
             terminal_display.finish()
             logger.info("Simulation ended naturally.")
-
 
         except traci.exceptions.FatalTraCIError as e:
             logger.error(f"Fatal TraCI error occurred. Ending simulation: {e}")
 
     def run_with_steps(self):
         """Run simulation for a specified number of steps"""
+
         for step in range(self.simulation_steps):
             traci.simulationStep()
             current_time = traci.simulation.getTime()
@@ -128,8 +182,13 @@ class SimulationRunner:
 
             # single updating line for runner status
             msg = f"Time {current_time:.1f}s: Vehicles: {vehicle_count}"
-            terminal_display.update("RUNNER", msg)
+            terminal_display.update("ENV", msg)
             terminal_display.render()
+            terminal_display.update("PROGRESSBAR",
+                                    self.progress_bar.display_string(current=step+1, end=self.simulation_steps,
+                                                                     steps=True))
+            terminal_display.render()
+        terminal_display.finish()
 
     def start_simulation(self):
         """Start the SUMO simulation with TraCI"""

@@ -1,10 +1,23 @@
 import os
 import argparse
+import datetime
 os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 
 from stable_baselines3 import PPO
+from stable_baselines3.common.callbacks import BaseCallback
 from base_sumo_env import BaseSumoEnvironment
 
+class StopAtTimeCallback(BaseCallback):
+    def __init__(self, stop_time, verbose=1):
+        super().__init__(verbose)
+        self.stop_time = stop_time
+
+    def _on_step(self) -> bool:
+        if datetime.datetime.now() >= self.stop_time:
+            print("\n=== STOP TIME REACHED. ENDING TRAINING ===")
+            return False  
+        return True
+    
 def main(args, sumo_config="config/simulation.sumocfg"):
     enabled_features = []
     if args.bsm: enabled_features.append("bsm")
@@ -29,8 +42,12 @@ def main(args, sumo_config="config/simulation.sumocfg"):
         tls=args.tls,
         bsm=args.bsm,
         priority=False,
-        reroute=False
+        reroute=False,
+        rl=True
     )
+
+    stop_time = datetime.datetime(2025, 12, 12, 21, 0)  # YEAR, MONTH, DAY, HOUR, MINUTE
+    callback = StopAtTimeCallback(stop_time)
 
     # train RL agent for this feature
     model = PPO(
@@ -45,7 +62,7 @@ def main(args, sumo_config="config/simulation.sumocfg"):
 
     print(f"Training {feature_name} feature...")
 
-    model.learn(total_timesteps=10000)
+    model.learn(total_timesteps=10_000_000_000, callback=callback)
     model.save(f"{feature_name}_feature_model")
 
     # test the trained feature

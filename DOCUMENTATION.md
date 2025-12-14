@@ -12,6 +12,8 @@
 │   ├── [base_sumo_env.py](#base-sumo-environment) <br>
 │   ├── [base_v2x_feature.py](#base-v2x-feature) <br>
 │   ├── [dynamic_tls.py](#dynamic-tls) <br>
+│   ├── [priority_corridor.py](#priority-corridor-feature) <br>
+│   ├── [terminal_display.py](#terminal-display) <br>
 │   └── [simulation_runner.py](#simulation-runner-class) <br>
 
 
@@ -331,4 +333,308 @@ Executes a traffic-light update step.
 **What it does:**
 - Loops through all TLS systems and applies dynamic_tls() to each.
 
+# Priority Corridor Feature
+
+### Constructor
+Initializes the `PriorityCorridorFeature` responsible for giving way to emergency vehicles by creating a “priority corridor” on the same edge.
+
+**Input:**
+- `feature_name` (str): Name of the feature (default: `"PriorityCorridorFeature"`).
+- `enabled` (bool): Whether the feature is active (default: `True`).
+
+**Output:** `None`
+
+**What it does:**  
+Sets up internal state: a cache of emergency-vehicle IDs, per-step log events, and a running counter of successful yield maneuvers. Uses constants:
+- `PRIORITY_TYPE`: vehicle type treated as emergency (e.g. `"emergency"`).
+- `RETURN_DISTANCE`: distance after which cars return to normal lane-change behavior.
+- `LANE_FREE_DIST`: local clearance to consider a target lane “free enough”.
+- `MAX_BULK_COMMANDS_PER_STEP`: safety cap on TraCI commands per step.
+
+
+### _cache_positions_and_detect_emergencies
+
+**Input:**
+- `vehicle_ids` (Iterable[str])
+
+**Output:**
+- `positions` (dict): `vehicle_id -> (x, y)` world coordinates.
+- `edges` (dict): `vehicle_id -> edge_id`.
+- `edge_to_vehicle_ids` (dict): `edge_id -> list[vehicle_id]`.
+
+**What it does:**  
+Makes one TraCI pass to cache positions and edges for all vehicles and updates `_emergency_vehicle_ids` based on `PRIORITY_TYPE`.
+
+
+### _choose_best_lane_for_emergency(edge_id)
+
+**Input:**
+- `edge_id` (str)
+
+**Output:**
+- `least_used_lane` (int)
+
+**What it does:**  
+Counts vehicles per lane on the given edge using `traci.lane.getLastStepVehicleIDs` and returns the lane index with the fewest vehicles. If TraCI fails, falls back to lane `0`.
+
+
+### _lane_is_free_enough(edge_id, lane_index, positions, vehicle_id)
+
+**Input:**
+- `edge_id` (str)
+- `lane_index` (int)
+- `positions` (dict)
+- `vehicle_id` (str)
+
+**Output:**
+- `bool`
+
+**What it does:**  
+Checks if the target lane has enough local space for a safe merge by comparing the merging vehicle’s `(x, y)` position to other vehicles in that lane and enforcing a minimum distance `LANE_FREE_DIST` in both axes.
+
+
+### _log_priority_events()
+
+**Input:** `None` (uses internal buffers)
+
+**Output:** `None`
+
+**What it does:**  
+Aggregates the per-step yield events:
+- **TTY (interactive terminal):** shows a compact line via `terminal_display` with total yields and the latest short event.
+- **Non-TTY (piped to file):** writes each verbose event string to the logger at `INFO` level.
+
+
+### take_action(action)
+
+**Input:**
+- `action`: current action
+
+**Output:** `None`
+
+**What it does:**  
+Implements the priority corridor behavior each simulation step:
+
+1. Reads all vehicle IDs and caches `positions`, `edges`, and `edge_to_vehicle_ids`.
+2. Filters active emergency vehicles and, for each:
+   - Finds its edge and the least-used lane via `_choose_best_lane_for_emergency`.
+3. For every other vehicle on that edge:
+   - Skips vehicles behind the emergency vehicle using `traci.vehicle.getLanePosition` (lane progression, not `(x, y)`).
+   - Uses the squared distance to the emergency vehicle and `RETURN_DISTANCE` to decide when to restore default `laneChangeMode`.
+   - Only processes vehicles in the lane chosen for the emergency vehicle.
+   - Skips stopped vehicles (speed `< 0.1`).
+   - Builds a small list of adjacent target lanes (left/right) and checks them with `_lane_is_free_enough`.
+   - If `traci.vehicle.couldChangeLane` allows it, performs a short `changeLane` into a safe adjacent lane, increments the total yield counter, and records a verbose + short log entry.
+4. Respects `MAX_BULK_COMMANDS_PER_STEP` to avoid flooding TraCI.
+5. Calls `_log_priority_events()` once at the end of the step.
+
+# Terminal Display
+
+### Constructor
+```python
+def __init__(self, keys=None, logger_obj=None)
+```
+
+**Input:**
+- `keys` (list, optional): Initial list of display keys for tracking multiple output lines. (default: `[]`)
+- `logger_obj` (logging.Logger, optional): Logger instance for non-interactive output. (default: module-level logger)
+
+**Output:** `None` (initializes object state)
+
+**What it does:** Sets up the display manager with optional initial keys and logger. Initializes internal state tracking for values, logged output, and terminal initialization status.
+
+### update(key, text)
+
+**Input:**
+- `key` (str): Display key/identifier for a specific output line
+- `text` (str): The text to display for this key
+
+**Output:** `None`
+
+**What it does:** Updates the value for a given key. If the key doesn't exist, it's automatically added to the display. Stores the text for rendering on the next `render()` call.
+
+### render()
+
+**Input:** `None`
+
+**Output:** `None`
+
+**What it does:** 
+- **In TTY (interactive terminal):** Moves cursor up to overwrite previous lines in-place, creating a "live update" effect without scrolling
+- **In Non-TTY (piped output, file logging):** Emits only changed values as INFO log messages to avoid spam
+- On first call, initializes the display by printing all current lines
+- On subsequent calls, detects changes and updates accordingly
+
+### finish()
+
+**Input:** `None`
+
+**Output:** `None`
+
+**What it does:** Cleans up the interactive display by moving the cursor to the line after the last display line and printing a newline. Resets the initialization state for potential future reuse.
+
+### Module-Level Singleton
+
+```python
+terminal_display = TerminalDisplay(keys=["ENV"])
+```
+
+A module-level singleton instance is provided for global use across the application. Import and use directly:
+
+```python
+from terminal_display import terminal_display
+
+terminal_display.update("ENV", "Simulation running...")
+terminal_display.render()
+```
+
 # Simulation Runner Class
+
+### Constructor
+```python
+def __init__(self, config_path, sumo_env, steps, **kwargs)
+```
+
+**Input:**
+- `config_path` (str): Path to SUMO configuration file
+- `sumo_env` (BaseSumoEnvironment or class): Pre-instantiated environment or environment class
+- `steps` (int, optional): Number of simulation steps to run
+- `**kwargs`: Additional keyword arguments passed to the environment
+
+**Output:** `None` (initializes object state)
+
+**What it does:** Sets up the simulation runner with either a provided environment instance or creates one from the config. Stores the step limit for later use in simulation execution.
+
+### run_manual_feature_test()
+
+**Input:** `None`
+
+**Output:** `None`
+
+**What it does:**
+- Logs which features are active
+- Resets the environment
+- Loops through simulation steps, taking random actions
+- Updates and renders display at each step
+- Automatically resets if episode terminates
+- Closes environment when done
+
+### test_specific_feature(feature_name)
+
+**Input:**
+- `feature_name` (str): Name of the feature to test in isolation
+
+**Output:** `None`
+
+**What it does:**
+- Logs isolated feature testing mode
+- Resets the environment
+- Steps through simulation with custom actions for the feature
+- Logs debug information per step
+- Handles episode resets
+- Closes environment when done
+
+### _get_feature_specific_action(feature_name, step)
+
+**Input:**
+- `feature_name` (str): Name of the feature being tested
+- `step` (int): Current simulation step number
+
+**Output:** Action compatible with the environment's action space
+
+**What it does:** Generates a feature-specific action for testing. Currently returns a random action from the action space; can be overridden for custom feature-specific logic.
+
+### run_until_end()
+
+**Input:** `None`
+
+**Output:** `None`
+
+**What it does:**
+- Steps through simulation until no more vehicles are expected
+- Updates terminal display with current time and vehicle count at each step
+- Handles FatalTraCIError exceptions gracefully
+- Calls `terminal_display.finish()` to clean up display when done
+- Logs completion message
+
+### run_with_steps()
+
+**Input:** `None`
+
+**Output:** `None`
+
+**What it does:**
+- Steps through exactly `self.simulation_steps` iterations
+- Updates terminal display with current time and vehicle count at each step
+- Exits loop after configured step count
+
+### start_simulation()
+
+**Input:** `None`
+
+**Output:** `None`
+
+**What it does:**
+- Resets the environment to initialize SUMO
+- Decides between `run_with_steps()` (if steps configured) or `run_until_end()` (if open-ended)
+- Closes the environment after execution completes
+
+### parse_arguments()
+
+**Input:** `None`
+
+**Output:** `argparse.Namespace` containing parsed command-line arguments
+
+**What it does:** Parses command-line arguments for:
+- `--steps`: Number of simulation steps
+- `--gui`: Enable SUMO GUI
+- `--bsm`: Enable Basic Safety Message feature
+- `--tls`: Enable Traffic Light System feature
+- `--priority`: Enable priority vehicle handling
+- `--reroute`: Enable dynamic rerouting
+- `--test-all`: Test all features with manual control
+
+### main()
+
+**Input:** `None` (reads from command-line arguments)
+
+**Output:** `None`
+
+**What it does:**
+1. Parses command-line arguments
+2. Constructs path to SUMO config file
+3. Creates BaseSumoEnvironment with enabled features
+4. Creates SimulationRunner instance
+5. Determines execution mode based on enabled features:
+   - `--test-all`: Run manual feature test mode
+   - Single feature enabled: Run isolated feature test
+   - Multiple features: Run manual feature test mode
+   - No features: Run standard simulation
+6. Executes the chosen simulation mode
+
+## Usage Examples
+
+**Run simulation without features for specified steps:**
+```bash
+python main.py --runner --steps 100
+```
+
+**Run simulation until vehicles are depleted with TLS enabled:**
+```bash
+python main.py --runner --tls
+```
+
+**Enable multiple features with GUI:**
+```bash
+python main.py --runner --bsm --tls --gui
+```
+
+**Test specific feature in isolation:**
+```bash
+python main.py --runner --bsm
+```
+
+**Test all features with manual control:**
+```bash
+python main.py --runner --test-all #(not to be used yest since not all features are implemented)
+```

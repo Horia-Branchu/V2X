@@ -13,6 +13,7 @@ import time
 from dummy_feature import DummyFeature
 from dynamic_tls import DynamicTLS
 from bsm_feature import BSMFeature
+from priority_corridor import PriorityCorridorFeature
 
 # use a named logger for the project; features can log at DEBUG for RL and INFO for rule-based
 logger = logging.getLogger("v2x")
@@ -48,8 +49,17 @@ class BaseSumoEnvironment(gym.Env):
 
     # to be implemented in the future of RL
     def _setup_spaces(self):
-        self.observation_space = gym.spaces.Box(low=0, high=1, shape=(1,))
-        self.action_space = gym.spaces.Discrete(1)
+        if self.rl and self.features:
+            if len(self.features) == 1:
+                self.observation_space = gym.spaces.Box(low=0, high=1, shape=(1,), dtype=np.float32)
+                # Box action space for RL: [tl_action, alpha, beta]
+                self.action_space = gym.spaces.Box(low=0, high=1, shape=(3,), dtype=np.float32)
+            else:
+                self.observation_space = gym.spaces.Box(low=0, high=1, shape=(1,), dtype=np.float32)
+                self.action_space = gym.spaces.Box(low=0, high=1, shape=(3,), dtype=np.float32)
+        else:
+            self.observation_space = gym.spaces.Box(low=0, high=1, shape=(1,), dtype=np.float32)
+            self.action_space = gym.spaces.Discrete(1)
         return
 
     # crucial step for V2X people
@@ -61,9 +71,9 @@ class BaseSumoEnvironment(gym.Env):
         if bsm:
             self.features.append(BSMFeature("BSMFeature"))
         if tls:
-            self.features.append(DynamicTLS("DynamicTLS"))
+            self.features.append(DynamicTLS("DynamicTLS", rl_mode=self.rl))
         if priority:
-            self.features.append(DummyFeature("PriorityFeature"))
+            self.features.append(PriorityCorridorFeature("PriorityCorridorFeature"))
         if reroute:
             self.features.append(DummyFeature("RerouteFeature"))
 
@@ -82,8 +92,13 @@ class BaseSumoEnvironment(gym.Env):
             traci.start(self.sumo_cmd)
         finally:
             stop_event.set()
-            
+
         self.current_step = 0
+
+        if self.rl and len(self.features) == 1:
+            feature = self.features[0]
+            self.observation_space = feature.get_observation_space()
+            self.action_space = feature.get_action_space()
 
         for feature in self.features:
             feature.feature_reset()
@@ -141,9 +156,23 @@ class BaseSumoEnvironment(gym.Env):
         if not self.features:
             return
 
+        if self.rl and len(self.features) == 1:
+            self.features[0].take_action(action)
+            return
+
         action_idx = 0
         for feature in self.features:
-            feature_action = action[action_idx] if isinstance(action, (list, np.ndarray)) else action
+            if isinstance(action, (list, np.ndarray, tuple)):
+                if isinstance(action, np.ndarray) and action.ndim == 0:
+                    feature_action = action.item()
+                else:
+                    if action_idx < len(action):
+                        feature_action = action[action_idx]
+                    else:
+                        feature_action = action[-1]
+            else:
+                feature_action = action
+
             feature.take_action(feature_action)
             action_idx += 1
 

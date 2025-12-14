@@ -5,6 +5,7 @@ import sys
 import libsumo as traci
 from terminal_display import terminal_display
 from base_v2x_feature import BaseV2XFeature
+from gymnasium.spaces import Discrete, Box
 
 # feature-level logger; routine per-step data goes to DEBUG, important events should use INFO
 logger = logging.getLogger("v2x.features")
@@ -12,20 +13,42 @@ logger = logging.getLogger("v2x.features")
 
 class DynamicTLS(BaseV2XFeature):
 
-    def __init__(self, feature_name="DynamicTLS", enabled=True):
+    def __init__(self, feature_name="DynamicTLS", enabled=True, rl_mode=False):
         super().__init__(enabled)
         self.feature_name = feature_name
-        self.observation_size = 3       # dummy observation size
-        self.action_size = 2            # dummy action size
-        self.detection_range = 50       # meters
-        self.extend_time = 5            # seconds
+        self.rl_mode = rl_mode  # True for RL, False for rule-based
+        self.observation_size = 5  # Observation elements per traffic light
+        self.detection_range = 50.0  # meters
+        self.extend_time = 5.0  # seconds
         self.tls_override_times = {}    # {tls_id: timestamp}
         self._tls_log_events = [] # per-step event buffer for compact TTY display or verbose non-TTY logs
-    def get_observation_space(self):
-        return gym.spaces.Box(low=0, high=1, shape=(self.observation_size,))
+        self.phase_time = 0
+        self._last_phase = {}
 
+        self.min_detection_range = 20.0
+        self.max_detection_range = 100.0
+
+        self.min_extend_time = 2.0
+        self.max_extend_time = 10.0
+
+        self.w_wait = 2.0
+        self.w_queue = 1.0
+        self.w_switch = 5.0
+
+        self._queue_clamp = 20
+    
+    def get_observation_space(self):
+        tls_list = traci.trafficlight.getIDList()
+        tls_count = len(tls_list)
+        low = np.array([0.0]*(tls_count*self.observation_size), dtype=np.float32)
+        high = []
+        for _ in range(tls_count):
+            high.extend([self._queue_clamp,self._queue_clamp,self._queue_clamp,self._queue_clamp,60.0])
+        high = np.array(high, dtype=np.float32) if high else np.array([0.0], dtype=np.float32)
+        return gym.spaces.Box(low=low, high=high, shape=(tls_count*self.observation_size,), dtype=np.float32)
+    
     def get_action_space(self):
-        return gym.spaces.Discrete(self.action_size)
+        return gym.spaces.Box(low=0, high=1, shape=(3,), dtype=np.float32)
 
     # Groups approaching vehicles by lane within the detection range
     def get_approaching_vehicles_by_lane(self, tls_id):
@@ -170,22 +193,157 @@ class DynamicTLS(BaseV2XFeature):
     def take_action(self, action):
         # clear per-step buffer
         self._tls_log_events.clear()
+        tls_list = traci.trafficlight.getIDList()
 
-        for tls_id in traci.trafficlight.getIDList():
+        if self.rl_mode:
+            alpha, beta = self._parse_rl_action(action)
+            
+            self.detection_range = self.min_detection_range + alpha * (self.max_detection_range - self.min_detection_range)
+            self.extend_time = self.min_extend_time + beta * (self.max_extend_time - self.min_extend_time)
+            
+            logger.debug(f"[{self.feature_name}] RL params - detection_range={self.detection_range:.1f}m, extend_time={self.extend_time:.2f}s")
+        
+        for tls_id in tls_list:
             self.dynamic_tls(tls_id)
 
         # Emit aggregated output
         self._log_tls_events()
+    
+    def _parse_rl_action(self, action):
+        if isinstance(action, np.ndarray):
+            action_flat = action.flatten()
+            if len(action_flat) >= 2:
+                return float(action_flat[1]), float(action_flat[2])
+            elif len(action_flat) == 1:
+                return float(action_flat[0]), 0.5
+        elif isinstance(action, (list, tuple)) and len(action) >= 2:
+            return float(action[1]), float(action[2])
+        
+        return 0.5, 0.5
 
     def get_observation(self):
-        dummy_obs = [0.1, 0.2, 0.3]  # dummy observation data
-        logger.debug(f"[{self.feature_name}] Observation: {dummy_obs}")
-        return np.array(dummy_obs)
+        obs = []
+        directions = ["N", "S", "E", "W"]
+        tls_list = traci.trafficlight.getIDList()
+
+        for tls_id in tls_list:
+            lanes = traci.trafficlight.getControlledLanes(tls_id)
+
+            groups = {d: [] for d in directions}
+            for lane in lanes:
+                edge = lane.split("_")[0]
+                for d in directions:
+                    if edge.startswith(d):
+                        groups[d].append(lane)
+
+            for d in directions:
+                q = sum(traci.lane.getLastStepVehicleNumber(l) for l in groups[d])
+                obs.append(min(q, self._queue_clamp))
+
+            elapsed = traci.trafficlight.getNextSwitch(tls_id) - traci.simulation.getTime()
+            elapsed = max(0.0, min(float(elapsed), 60.0))
+            obs.append(elapsed)
+
+        return np.array(obs, dtype=np.float32) if obs else np.array([0.0], dtype=np.float32)
 
     def calculate_reward(self):
-        dummy_reward = 0.5  # dummy reward
-        logger.debug(f"[{self.feature_name}] Reward: {dummy_reward}")
-        return dummy_reward
+        tls_list = traci.trafficlight.getIDList()
+        total_waiting = 0.0
+        total_queue = 0.0
+        switches = 0
+        bonus = 0.0
+        throughput = 0.0
+        efficiency_bonus = 0.0
+
+        current_phase = {}
+        for tls_id in tls_list:
+            phase = traci.trafficlight.getPhase(tls_id)
+            current_phase[tls_id] = phase
+            last_phase = self._last_phase.get(tls_id, phase)
+            if phase != last_phase:
+                switches += 1
+
+            detection_range = getattr(self, 'detection_range', self.detection_range)
+            extend_time = getattr(self, 'extend_time', self.extend_time)
+            lanes = traci.trafficlight.getControlledLanes(tls_id)
+            lane_queues = {}
+            green_lanes_served = 0
+            
+            for lane in lanes:
+                vehs = traci.lane.getLastStepVehicleIDs(lane)
+                halting_count = traci.lane.getLastStepHaltingNumber(lane)
+                total_queue += halting_count
+
+                lane_waiting = 0.0
+                detected_in_range = 0
+                
+                for v in vehs:
+                    try:
+                        pos = traci.vehicle.getLanePosition(v)
+                        lane_len = traci.lane.getLength(lane)
+                        dist = max(0.0, lane_len - pos)
+                        speed = traci.vehicle.getSpeed(v)
+                    except Exception:
+                        dist = 0.0
+                        speed = 0.0
+
+                    if 0 <= dist <= detection_range:
+                        detected_in_range += 1
+                        lane_waiting += traci.vehicle.getWaitingTime(v)
+                        if speed > 1.0:
+                            throughput += speed * 0.2
+
+                total_waiting += lane_waiting
+                lane_queues[lane] = halting_count
+                
+                if self.is_lane_green(tls_id, lane) and detected_in_range > 0:
+                    green_lanes_served += detected_in_range
+
+            if lane_queues:
+                max_queue_lane = max(lane_queues, key=lane_queues.get)
+                min_queue_lane = min(lane_queues, key=lane_queues.get)
+                max_queue = lane_queues[max_queue_lane]
+                min_queue = lane_queues[min_queue_lane]
+
+                if self.is_lane_green(tls_id, max_queue_lane):
+                    bonus += 1.0 * max_queue  
+
+                elif self.is_lane_green(tls_id, min_queue_lane) and max_queue - min_queue > 5:
+                    bonus += 0.5 * max_queue
+                    
+            efficiency_bonus += green_lanes_served * 0.3
+        
+        self._last_phase = current_phase
+
+        num_vehicles = sum(traci.lane.getLastStepVehicleNumber(lane) 
+                          for tls_id in tls_list 
+                          for lane in traci.trafficlight.getControlledLanes(tls_id))
+        
+        if num_vehicles > 0:
+            avg_waiting = total_waiting / num_vehicles
+        else:
+            avg_waiting = 0.0
+
+        param_efficiency = 0.0
+        if 40 <= detection_range <= 80:
+            param_efficiency += 1.0
+        else:
+            param_efficiency -= abs(detection_range - 60) * 0.1  
+            
+        if 4 <= extend_time <= 8:
+            param_efficiency += 1.0
+        else:
+            param_efficiency -= abs(extend_time - 6) * 0.2  
+
+        time_penalty = traci.simulation.getTime() * 0.001
+
+        reward = -(self.w_wait * avg_waiting + self.w_queue * total_queue + self.w_switch * switches + time_penalty) + bonus + throughput + efficiency_bonus + param_efficiency
+        
+        logger.debug(f"[{self.feature_name}] reward parts: "
+                     f"avg_waiting={avg_waiting:.2f}, queue={total_queue:.1f}, switches={switches}, "
+                     f"bonus={bonus:.1f}, throughput={throughput:.1f}, efficiency={efficiency_bonus:.1f}, "
+                     f"param_eff={param_efficiency:.2f}, time_penalty={time_penalty:.2f} => reward={reward:.3f}")
+        return float(reward)
 
     def get_feature_name(self):
         return self.feature_name
@@ -206,8 +364,12 @@ class DynamicTLS(BaseV2XFeature):
                 logger.info(verbose)
 
     def feature_step(self):
-        # default behavior: don't spam the console for rule-based runs
-        logger.debug(f"[{self.feature_name}] Step completed")
+        det = getattr(self, "detection_range", self.detection_range)
+        ext = getattr(self, "extend_time", self.extend_time)
+        logger.debug(f"[{self.feature_name}] Step | detection_range={det:.1f}m extend_time={ext:.2f}s")
 
     def feature_reset(self):
+        self._tls_log_events.clear()
+        self._last_phases = {tls_id: traci.trafficlight.getPhase(tls_id) for tls_id in traci.trafficlight.getIDList()}
+        self.phase_time = 0
         logger.debug(f"[{self.feature_name}] Reset")
