@@ -115,7 +115,7 @@ class DynamicTLS(BaseV2XFeature):
         short = message.split(',')[0]
         self._tls_log_events.append((verbose, short))
 
-# Main dynamic TLS control controller:
+    # Main dynamic TLS control function:
     # - detects vehicles approaching intersections
     # - extends green phase of the TLS if a vehicle is approaching from that side
     # - if there are no vehicles approaching the green phase of the TLS but other lanes do, switch to the next phase
