@@ -5,6 +5,7 @@ from pathlib import Path
 # global definition
 baseline_filename = "vehicle_state_baseline.parquet"
 v2x_filename = "vehicle_state_v2x.parquet"
+rl_filename = "vehicle_state_rl.parquet"
 data_dir_name = "data"
 
 class DataCollector:
