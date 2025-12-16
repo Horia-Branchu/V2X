@@ -132,8 +132,8 @@ class DynamicTLS(BaseV2XFeature):
 
         time_in_phase = current_time - self.tls_last_switch[tls_id]
 
-        approaching = self.get_approaching_vehicles_by_lane(tls_id)
-        edge_count = {edge: len(v_list) for edge, v_list in approaching.items()}
+        approaching_vehicles = self.get_approaching_vehicles_by_lane(tls_id)
+        edge_count = {edge: len(v_list) for edge, v_list in approaching_vehicles.items()}
         total_approaching = sum(edge_count.values())
 
         state = traci.trafficlight.getRedYellowGreenState(tls_id)
@@ -145,14 +145,14 @@ class DynamicTLS(BaseV2XFeature):
                 for inc, out, via in links:
                     green_lanes.append(inc)
 
-        cars_in_green = sum(len(approaching.get(lane, [])) for lane in green_lanes)
+        cars_in_green = sum(len(approaching_vehicles.get(lane, [])) for lane in green_lanes)
         cars_elsewhere = total_approaching - cars_in_green
 
-        # 1. If lane hasn't had green for more than max_wait, force if
-        if approaching:
+        # 1. If lane hasn't had green for more than max_wait, force it
+        if approaching_vehicles:
             starved_lane = None
             max_wait_elapsed = -1.0
-            for lane in approaching.keys():
+            for lane in approaching_vehicles.keys():
                 last = self.lane_last_green.get(lane, 0.0)
                 wait_elapsed = current_time - last
                 if wait_elapsed > max_wait_elapsed:
@@ -201,7 +201,7 @@ class DynamicTLS(BaseV2XFeature):
                     )
                     return
 
-        # 2. Extend green when vehicles are approaching on it
+        # 2. Extend green when vehicles are approaching from the side on which the TLS is green
         if cars_in_green > 0:
             traci.trafficlight.setPhaseDuration(tls_id, self.extend_time)
             self.spat_message_log(
@@ -210,7 +210,7 @@ class DynamicTLS(BaseV2XFeature):
             )
             return
 
-        # 3. Green has no cars but others are waiting
+        # 3. No cars approaching from the side on which the TLS is green but there are vehicles waiting at the red light
         if cars_in_green == 0 and cars_elsewhere > 0:
             next_phase = (phase + 1) % len(phases)
             traci.trafficlight.setPhase(tls_id, next_phase)
