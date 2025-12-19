@@ -9,6 +9,7 @@ def main():
     parser = argparse.ArgumentParser(description="Run RL features")
     parser.add_argument("--tls", action="store_true", help="Run TLS feature")
     parser.add_argument("--bsm", action="store_true", help="Run BSM feature")
+    parser.add_argument("--gui", action="store_true", help="Start simulation in GUI")
     args = parser.parse_args()
 
     enabled_features = []
@@ -16,7 +17,7 @@ def main():
     if args.tls: enabled_features.append("tls")
 
     if len(enabled_features) == 0:
-        print("ERROR: Please specify one feature for RL testing!")
+        print(f"ERROR: Please specify one feature for RL testing!\nPlease choose one of the following --tls --bsm --gui")
         exit(68)
 
     if len(enabled_features) > 1:
@@ -27,7 +28,7 @@ def main():
     # Create environment
     env = BaseSumoEnvironment(
         "config/simulation.sumocfg",
-        gui=False,
+        gui=args.gui,
         tls=args.tls,
         bsm=args.bsm,
         priority=False,
