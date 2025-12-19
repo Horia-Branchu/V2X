@@ -160,19 +160,19 @@ class DynamicTLS(BaseV2XFeature):
                     starved_lane = lane
 
             if starved_lane and max_wait_elapsed >= self.max_wait:
-                target_phase_idx = None
+                target_phase_index = None
                 for p_idx, p in enumerate(phases):
                     p_state = p.state
                     for link_idx, links in enumerate(controlled):
                         if link_idx < len(p_state) and p_state[link_idx] in ("G", "g"):
                             if any(link[0] == starved_lane for link in links):
-                                target_phase_idx = p_idx
+                                target_phase_index = p_idx
                                 break
-                    if target_phase_idx is not None:
+                    if target_phase_index is not None:
                         break
 
-                if target_phase_idx is not None:
-                    traci.trafficlight.setPhase(tls_id, int(target_phase_idx))
+                if target_phase_index is not None:
+                    traci.trafficlight.setPhase(tls_id, int(target_phase_index))
                     traci.trafficlight.setPhaseDuration(tls_id, self.extend_time * 2)
                     self.tls_last_switch[tls_id] = current_time
                     new_state = traci.trafficlight.getRedYellowGreenState(tls_id)
@@ -182,7 +182,7 @@ class DynamicTLS(BaseV2XFeature):
                             for inc, _, _ in links:
                                 self.lane_last_green[inc] = current_time
                     self.spat_message_log(
-                        f"Starvation: switched phase {phase} -> {target_phase_idx} to serve {starved_lane} (wait={max_wait_elapsed:.1f}s)",
+                        f"Starvation: switched phase {phase} -> {target_phase_index} to serve {starved_lane} (wait={max_wait_elapsed:.1f}s)",
                         event_type="FORCED_GREEN",
                     )
                     return
