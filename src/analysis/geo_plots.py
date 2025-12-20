@@ -6,7 +6,7 @@ import pandas as pd
 import sumolib
 import logging
 
-from data_collector import baseline_filename, v2x_filename, data_dir_name
+from data_collector import baseline_filename, v2x_filename, data_dir_name, rl_filename
 from pathlib import Path
 
 logger = logging.getLogger("v2x")
@@ -83,7 +83,7 @@ def plot_min_speed_map(
     net = sumolib.net.readNet(str(net_path))
     xmin, ymin, xmax, ymax = _net_bbox_from_shapes(net)
 
-    vmin, vmax = 3, 12
+    vmin, vmax = 1, 12
     cmap = mpl.colormaps.get_cmap(cmap_name)
     norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
 
@@ -193,19 +193,19 @@ def generate_geo_plot(parquet_path: Path, sumo_cfg_path: Path, output_name: str)
     )
 
 
-def compare_geo_plots(data_dir: Path):
+def compare_geo_plots(data_dir: Path, comparison_label: str):
     """Create a side-by-side comparison image of baseline vs V2X."""
     import matplotlib.image as mpimg
 
     baseline_img = data_dir / "min_speed_baseline.png"
-    v2x_img = data_dir / "min_speed_V2X.png"
+    comparison_img = data_dir / f"min_speed_{comparison_label}.png"
 
-    if not baseline_img.exists() or not v2x_img.exists():
+    if not baseline_img.exists() or not comparison_img.exists():
         print("Skipping comparison: one of the images does not exist.")
         return
 
     img_base = mpimg.imread(baseline_img)
-    img_v2x = mpimg.imread(v2x_img)
+    img_v2x = mpimg.imread(comparison_img)
 
     fig, axes = plt.subplots(1, 2, figsize=(18, 9))
 
@@ -229,6 +229,7 @@ def main():
 
     baseline_path = data_dir / baseline_filename
     v2x_path = data_dir / v2x_filename
+    rl_path = data_dir / rl_filename
 
     sumo_cfg_path = project_root / "config" / "simulation.sumocfg"
     if not sumo_cfg_path.exists():
@@ -237,25 +238,29 @@ def main():
     print(f"Using SUMO config: {sumo_cfg_path}")
     print(f"Looking for parquet files in: {data_dir}")
 
-    if v2x_path.exists():
-        print("Generating geographic plot for V2X run...")
-        generate_geo_plot(v2x_path, sumo_cfg_path, "min_speed_V2X.png")
-    else:
-        print("No {vehicle_filename} — skipping V2X plot")
+    if not baseline_path.exists():
+        raise FileNotFoundError(f"No {baseline_filename} file found")
 
-    if baseline_path.exists():
-        print("Generating geographic plot for BASELINE run...")
-        generate_geo_plot(baseline_path, sumo_cfg_path, "min_speed_baseline.png")
-    else:
-        print(f"No {Path(baseline_filename).stem}_baseline.parquet found — skipping baseline plot")
+    if v2x_path.exists() and rl_path.exists():
+        raise FileNotFoundError(f"Both V2X and RL files exists.\nPlease make sure to have just one")
 
-    if v2x_path.exists() and baseline_path.exists():
-        try:
-            compare_geo_plots(data_dir)
-        except Exception as e:
+    if not v2x_path.exists() and not rl_path.exists():
+        raise FileNotFoundError(f"No V2X or RL parquet file found")
+
+    comparison_path = v2x_path if v2x_path.exists() else rl_path
+    comparison_label = "V2X" if v2x_path.exists() else "RL"
+
+    print(f"Generating geographic plot for baseline run")
+    generate_geo_plot(baseline_path, sumo_cfg_path, "min_speed_baseline.png")
+    print(f"Generation geographic plot for comparison label")
+    generate_geo_plot(comparison_path, sumo_cfg_path, f"min_speed_{comparison_label}.png")
+
+    try:
+        compare_geo_plots(data_dir,comparison_label)
+    except Exception as e:
             print(f"Failed to generate comparison image: {e}")
 
-    print("All geo plots finished.")
+    print(f"All geo plots finished.")
 
 
 if __name__ == "__main__":

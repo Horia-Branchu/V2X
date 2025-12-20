@@ -4,7 +4,7 @@ import seaborn as sns
 import argparse
 
 from pathlib import Path
-from data_collector import baseline_filename, v2x_filename, data_dir_name
+from data_collector import baseline_filename, v2x_filename, data_dir_name, rl_filename
 
 def plot_filename(x: str, y: str, suffix: str = "png") -> str:
     def clean(name: str) -> str:
@@ -50,7 +50,7 @@ def set_total_points(df, total_points, random_state=42):
         return df
 
 
-def plot_accel_vs_co2(df, out_dir):
+def plot_accel_vs_co2(df, out_dir, title):
     """Side-by-side accel vs CO2 plot."""
     enforce_features(df, "accel", "co2")
 
@@ -70,7 +70,7 @@ def plot_accel_vs_co2(df, out_dir):
 
         sns.scatterplot(data=df_v2x, x="accel", y="co2", ax=ax2, alpha=0.25, color="darkorange")
         sns.regplot(data=df_v2x, x="accel", y="co2", ax=ax2, scatter=False, line_kws={"color": "royalblue"})
-        ax2.set_title("V2X")
+        ax2.set_title(title)
         ax2.set_xlabel("Acceleration (m/s²)")
 
         xmin = df_filtered["accel"].min()
@@ -82,14 +82,14 @@ def plot_accel_vs_co2(df, out_dir):
         avg_v2x = df_v2x["co2"].mean()
         improvement = (avg_base - avg_v2x) / avg_base * 100
 
-        summary = f"V2X reduced average CO2 emissions by {improvement:.1f}% compared to baseline."
+        summary = f"{title} reduced average CO2 emissions by {improvement:.1f}% compared to baseline."
         fig.text(0.5, 0.015, summary, ha='center', fontsize=12)
 
         plt.tight_layout(rect=[0, 0.05, 1, 1])
         plt.savefig(out_dir / plot_filename("accel", "co2"), dpi=150)
         plt.close()
 
-def plot_speed_vs_co2(df, out_dir):
+def plot_speed_vs_co2(df, out_dir, title):
     enforce_features(df, "speed", "co2")
 
     df_filtered = df[df["co2"] > 1]
@@ -108,7 +108,7 @@ def plot_speed_vs_co2(df, out_dir):
 
         sns.scatterplot(data=df_v2x, x="speed", y="co2", ax=ax2, alpha=0.3, color="darkorange")
         sns.regplot(data=df_v2x, x="speed", y="co2", ax=ax2, scatter=False, line_kws={"color": "royalblue"})
-        ax2.set_title("V2X")
+        ax2.set_title(title)
         ax2.set_xlabel("Speed (m/s)")
 
         xmin = df_filtered["speed"].min()
@@ -120,14 +120,14 @@ def plot_speed_vs_co2(df, out_dir):
         avg_v2x = df_v2x["co2"].mean()
         improvement = (avg_base - avg_v2x) / avg_base * 100
 
-        summary = f"V2X reduced CO2 emissions by {improvement:.1f}% at comparable speeds."
+        summary = f"{title} reduced CO2 emissions by {improvement:.1f}% at comparable speeds."
         fig.text(0.5, 0.015, summary, ha='center', fontsize=12)
 
         plt.tight_layout(rect=[0, 0.05, 1, 1])
         plt.savefig(out_dir / plot_filename("speed", "co2"), dpi=150)
         plt.close()
 
-def plot_co2_vs_jerk(df, out_dir):
+def plot_co2_vs_jerk(df, out_dir, title):
     enforce_features(df, "jerk", "co2")
 
     df_filtered = df[df["co2"] > 1]
@@ -146,7 +146,7 @@ def plot_co2_vs_jerk(df, out_dir):
 
         sns.scatterplot(data=df_v2x, x="jerk", y="co2", ax=ax2, alpha=0.3, color="orange")
         sns.regplot(data=df_v2x, x="jerk", y="co2", ax=ax2, scatter=False)
-        ax2.set_title("V2X")
+        ax2.set_title(title)
         ax2.set_xlabel("Jerk (m/s³)")
 
         xmin = df_filtered["jerk"].min()
@@ -158,7 +158,7 @@ def plot_co2_vs_jerk(df, out_dir):
         var_v2x = df_v2x["jerk"].var()
         improvement = (var_base - var_v2x) / var_base * 100
 
-        summary = f"V2X improved driving smoothness by {improvement:.1f}%, reducing jerk variability."
+        summary = f"{title} improved driving smoothness by {improvement:.1f}%, reducing jerk variability."
         fig.text(0.5, 0.015, summary, ha='center', fontsize=12)
 
         plt.tight_layout(rect=[0, 0.05, 1, 1])
@@ -166,7 +166,7 @@ def plot_co2_vs_jerk(df, out_dir):
         plt.close()
 
 
-def plot_queue_time_over_time(df: pd.DataFrame, out_dir: Path):
+def plot_queue_time_over_time(df: pd.DataFrame, out_dir: Path, title:str):
     required = {"time", "queue_time", "run"}
     if not required.issubset(df.columns):
         print("Missing required columns for queue-time plot.")
@@ -184,10 +184,15 @@ def plot_queue_time_over_time(df: pd.DataFrame, out_dir: Path):
         final_means = {}
 
         for run, g in grouped.groupby("run"):
+            if run == "baseline":
+                label = "Baseline"
+            else:
+                label = "RL"
+
             plt.plot(
                 g["time"],
                 g["queue_time"],
-                label=run.capitalize(),
+                label=label,
                 linewidth=2
             )
             final_means[run] = g["queue_time"].iloc[-1]
@@ -202,7 +207,7 @@ def plot_queue_time_over_time(df: pd.DataFrame, out_dir: Path):
         plt.legend()
 
         summary = (
-            f"By the end of the simulation, V2X vehicles accumulated on average "
+            f"By the end of the simulation, {title} vehicles accumulated on average "
             f"{delta_sec:.0f} additional seconds of queueing time. "
             f"This reflects intentional holding of some vehicles to reduce stop-and-go traffic "
             f"and improve overall flow stability."
@@ -217,7 +222,7 @@ def plot_queue_time_over_time(df: pd.DataFrame, out_dir: Path):
 
 
 
-def plot_timeloss_histogram(df: pd.DataFrame, out_dir: Path):
+def plot_timeloss_histogram(df: pd.DataFrame, out_dir: Path, title:str):
     if "time_loss" not in df.columns or "run" not in df.columns:
         print("Missing 'time_loss' or 'run' column.")
         return
@@ -231,11 +236,16 @@ def plot_timeloss_histogram(df: pd.DataFrame, out_dir: Path):
             subset = df[df["run"] == run]["time_loss"]
             medians[run] = subset.median()
 
+            if run == "baseline":
+                label = "Baseline"
+            else:
+                label = "RL"
+
             plt.hist(
                 subset.clip(upper=300),
                 bins=30,
                 alpha=0.6,
-                label=run.capitalize(),
+                label=label,
             )
 
         delta_sec = medians["baseline"] - medians["v2x"]
@@ -246,7 +256,7 @@ def plot_timeloss_histogram(df: pd.DataFrame, out_dir: Path):
         plt.legend()
 
         summary = (
-            f"V2X reduced median vehicle time loss by {delta_sec:.0f} seconds compared to baseline. "
+            f"{title} reduced median vehicle time loss by {delta_sec:.0f} seconds compared to baseline. "
             f"High-delay cases are concentrated among fewer vehicles rather than distributed "
             f"across the entire traffic stream."
         )
@@ -259,14 +269,14 @@ def plot_timeloss_histogram(df: pd.DataFrame, out_dir: Path):
 
 
 
-def plot_total_co2_pie(df: pd.DataFrame, out_dir: Path):
+def plot_total_co2_pie(df: pd.DataFrame, out_dir: Path, title:str):
     if "co2" not in df.columns or "run" not in df.columns:
         print("Missing columns for CO2 pie chart.")
         return
 
     totals = df.groupby("run")["co2"].sum()
 
-    labels = [f"{k.capitalize()}" for k in totals.index]
+    labels = ["Baseline",title]
     values = totals.values
 
     with plt.style.context("seaborn-v0_8"):
@@ -277,7 +287,7 @@ def plot_total_co2_pie(df: pd.DataFrame, out_dir: Path):
             autopct="%1.1f%%",
             startangle=90
         )
-        plt.title("Total CO2 Emissions: Baseline vs V2X")
+        plt.title(f"Total CO2 Emissions: Baseline vs {title}")
         plt.tight_layout()
         plt.savefig(out_dir / "co2_total_pie.png", dpi=150)
         plt.close()
@@ -289,18 +299,27 @@ def main(max_points):
 
     baseline_path = data_dir / baseline_filename
     v2x_path = data_dir / v2x_filename
+    rl_path = data_dir / rl_filename
 
     if not baseline_path.exists():
-        print(f"No {baseline_path} file found.")
-        return
+        raise FileNotFoundError(f"No {baseline_path} file found.")
 
-    if not v2x_path.exists():
-        print(f"Missing V2X file: {v2x_path}")
-        return
+    if v2x_path.exists() and rl_path.exists():
+        raise FileNotFoundError(f"Both V2X and RL files exists.\nPlease make sure to have just one")
+
+    if not v2x_path.exists() and not rl_path.exists():
+        raise FileNotFoundError(f"No V2X or RL parquet file found")
+
+    if v2x_path.exists():
+        comparison_path = v2x_path
+        title = "V2X"
+    else:
+        comparison_path = rl_path
+        title = "RL"
 
     out_dir = data_dir
 
-    df_v2x = pd.read_parquet(v2x_path)
+    df_v2x = pd.read_parquet(comparison_path)
     df_v2x["run"] = "v2x"
 
     if baseline_path.exists():
@@ -313,21 +332,21 @@ def main(max_points):
         time_common = min(time_baseline_end, time_v2x_end)
 
         df = df[df["time"] <= time_common]
-        print(f"Using dataset: {baseline_path}\nv2x at {v2x_path}\n"
+        print(f"Using dataset: {baseline_path}\nv2x at {comparison_path}\n"
               f"Generating comparison plots (baseline vs v2x)")
     else:
         df = df_v2x
-        print(f"Using datasets: {v2x_path}\n"
+        print(f"Using datasets: {comparison_path}\n"
               f"(No {baseline_path.name} found, plotting single run.)")
 
     df_sampled = set_total_points(df, total_points=max_points)
 
-    plot_accel_vs_co2(df_sampled, out_dir)
-    plot_speed_vs_co2(df_sampled, out_dir)
-    plot_co2_vs_jerk(df_sampled, out_dir)
-    plot_queue_time_over_time(df_sampled, out_dir)
-    plot_timeloss_histogram(df_sampled, out_dir)
-    plot_total_co2_pie(df_sampled, out_dir)
+    plot_accel_vs_co2(df_sampled, out_dir, title)
+    plot_speed_vs_co2(df_sampled, out_dir, title)
+    plot_co2_vs_jerk(df_sampled, out_dir, title)
+    plot_queue_time_over_time(df_sampled, out_dir, title)
+    plot_timeloss_histogram(df_sampled, out_dir, title)
+    plot_total_co2_pie(df_sampled, out_dir, title)
 
     print("All plots are done")
 
