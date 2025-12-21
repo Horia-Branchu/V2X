@@ -26,10 +26,10 @@ def main():
         parser.error("Specify --runner / --collect / --rl / --rltest")
 
     module_map = {
-        "simulation_runner": "src.simulation_runner",
-        "collector_runner": "src.collector_runner",
-        "rl_trainee": "src.rl_trainee",
-        "rl_tester": "src.rl_tester",
+        "simulation_runner": "runners.simulation_runner",
+        "collector_runner": "runners.collector_runner",
+        "rl_trainee": "runners.rl_trainee",
+        "rl_tester": "runners.rl_tester",
     }
 
     if cmd not in module_map:

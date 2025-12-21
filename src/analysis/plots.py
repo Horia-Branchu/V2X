@@ -4,7 +4,7 @@ import seaborn as sns
 import argparse
 
 from pathlib import Path
-from data_collector import baseline_filename, v2x_filename, data_dir_name, rl_filename
+from datas.data_collector import baseline_filename, v2x_filename, data_dir_name, rl_filename
 
 def plot_filename(x: str, y: str, suffix: str = "png") -> str:
     def clean(name: str) -> str:

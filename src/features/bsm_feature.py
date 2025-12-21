@@ -3,7 +3,7 @@ import gymnasium as gym
 import logging
 import sys
 import libsumo as traci
-from terminal_display import terminal_display
+from ui.terminal_display import terminal_display
 from features.base_v2x_feature import BaseV2XFeature
 
 logger = logging.getLogger("v2x.features")

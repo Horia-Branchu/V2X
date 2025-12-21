@@ -6,9 +6,9 @@ import logging
 import sys
 import libsumo as traci
 
-from env.base_sumo_env import BaseSumoEnvironment
-from progress_bar import ProgressBar
-from terminal_display import terminal_display
+from environment.base_sumo_env import BaseSumoEnvironment
+from ui.progress_bar import ProgressBar
+from ui.terminal_display import terminal_display
 
 # use the project logger
 logger = logging.getLogger("v2x")
