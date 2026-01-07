@@ -10,22 +10,18 @@ logger = logging.getLogger("v2x.features")
 
 #improved variable names to make their purpose more obvious and make the application be overall more readable from a 3rd person's pov
 class BSMFeature(BaseV2XFeature):
-    # Time and interval constants
     DEFAULT_LAST_BRAKE_TIME = -10.0
     MIN_BRAKE_INTERVAL_S = 0.5
     PREEMPTIVE_SLOWDOWN_FACTOR = 0.7
     
-    # Observation space constants
     OBSERVATION_SPACE_SIZE = 5
     ACTION_SPACE_SIZE = 1
     ACTION_DISCRETE_COUNT = 3
     ACTION_PARAMS_COUNT = 3
     
-    # Observation bounds
     OBSERVATION_LOW_BOUNDS = [0.0, 0.0, 0.0, 0.0, 0.0]
     OBSERVATION_HIGH_BOUNDS = [100.0, 200.0, 50.0, 10.0, 100.0]
     
-    # Parameter bounds
     PARAM_MIN_VALUE = 0.0
     PARAM_MAX_VALUE = 1.0
     
@@ -176,7 +172,6 @@ class BSMFeature(BaseV2XFeature):
             f"avg_time_to_collision={avg_time_to_collision:.2f}s, brakes={self._emergency_brake_count}"
         )
         
-         # Return observation array with shape (5,) and dtype float32
         return np.array([
             float(vehicle_pair_count),
             avg_gap_distance,
@@ -255,16 +250,6 @@ class BSMFeature(BaseV2XFeature):
         return self.feature_name
 
     def _calculate_time_to_collision(self, gap: float, follower_speed: float, leader_speed: float) -> float:
-        """Calculate time to collision given gap and speeds
-        
-        Args:
-            gap: Distance between vehicles in meters
-            follower_speed: Speed of following vehicle in m/s
-            leader_speed: Speed of leading vehicle in m/s
-            
-        Returns:
-            Time to collision in seconds, or float('inf') if vehicles are not approaching
-        """
         rel_speed = max(self.PARAM_MIN_VALUE, follower_speed - leader_speed)
         
         if rel_speed > self.MIN_RELATIVE_SPEED_THRESHOLD:
