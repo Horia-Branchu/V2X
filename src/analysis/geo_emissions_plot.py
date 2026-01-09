@@ -7,7 +7,7 @@ import sumolib
 import logging
 import numpy as np
 
-from data_collector import baseline_filename, v2x_filename, data_dir_name
+from data_collector import baseline_filename, v2x_filename, data_dir_name, rl_filename
 from pathlib import Path
 
 logger = logging.getLogger("v2x")
@@ -120,7 +120,7 @@ def plot_co2_pollution_map(
         if not shp or len(shp) < 2:
             continue
         xs, ys = zip(*shp)
-        ax_l.plot(xs, ys, color="lightgray", linewidth=0.8, alpha=0.8)
+        ax_l.plot(xs, ys, color="darkgray", linewidth=0.8, alpha=0.8)
 
     ax_l.set_title("Baseline reference pollution map")
     ax_l.set_xlim([xmin, xmax])
@@ -181,6 +181,7 @@ def main():
 
     baseline_path = data_dir / baseline_filename
     v2x_path = data_dir / v2x_filename
+    rl_path = data_dir / rl_filename
 
     sumo_cfg_path = project_root / "config" / "simulation.sumocfg"
     if not sumo_cfg_path.exists():
@@ -189,12 +190,20 @@ def main():
     print(f"Using SUMO config: {sumo_cfg_path}")
     print(f"Reading parquet files from: {data_dir}")
 
-    if not baseline_path.exists() or not v2x_path.exists():
-        print(f"Missing baseline or V2X parquet.")
-        return
+    if not baseline_path.exists():
+        raise FileNotFoundError(f"Missing baseline parquet.")
+
+    if v2x_path.exists() and rl_path.exists():
+        raise FileNotFoundError(f"Both V2X and RL files exists.\nPlease make sure to have just one")
+
+    if not v2x_path.exists() and not rl_path.exists():
+        raise FileNotFoundError(f"No V2X or RL parquet file found")
+
+    comparison_path = v2x_path if v2x_path.exists() else rl_path
+    comparison_label = "V2X" if v2x_path.exists() else "RL"
 
     df_base = pd.read_parquet(baseline_path)
-    df_v2x = pd.read_parquet(v2x_path)
+    df_v2x = pd.read_parquet(comparison_path)
 
     net_path = _find_net_path_from_sumocfg(sumo_cfg_path)
     net = sumolib.net.readNet(str(net_path))
@@ -202,12 +211,12 @@ def main():
 
     df_pollution = compute_edge_pollution_co2(df_base, df_v2x, edge_lengths)
 
-    out_path = data_dir / "co2_pollution_baseline_vs_v2x.png"
+    out_path = data_dir / f"co2_pollution_baseline_vs_{comparison_label}.png"
     plot_co2_pollution_map(
         df_pollution=df_pollution,
         sumo_config=sumo_cfg_path,
         out_path=out_path,
-        title="Pollution map after V2X"
+        title=f"Pollution map after {comparison_label}"
     )
 
     print(f"CO2 pollution geographic plot finished.")
