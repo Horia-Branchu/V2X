@@ -48,8 +48,8 @@ class PriorityCorridorFeature(BaseV2XFeature):
             # Actions: 0=keep, 1=switch, 2=force_green
             self.action_size = 3
         else:
-            self.observation_size = 3  # dummy
-            self.action_size = 2       # dummy
+            self.observation_size = 3
+            self.action_size = 2
 
     def get_observation_space(self):
         if self.rl_mode:
@@ -61,10 +61,7 @@ class PriorityCorridorFeature(BaseV2XFeature):
             return gym.spaces.Box(low=0, high=1, shape=(self.observation_size,))
 
     def get_action_space(self):
-        if self.rl_mode:
-            return gym.spaces.Discrete(self.action_size)
-        else:
-            return gym.spaces.Discrete(self.action_size)
+        return gym.spaces.Discrete(self.action_size)
 
     def get_observation(self):
         if not self.rl_mode:
@@ -105,19 +102,15 @@ class PriorityCorridorFeature(BaseV2XFeature):
         reward = 0.0
         prio_vehicles = self._get_priority_vehicles()
 
-        # reward passing priority vehicles
-        passed = self.prev_priority_count - len(prio_vehicles)
-        if passed > 0:
-            reward += passed * 10.0
+        cleared_vehicles = self.prev_priority_count - len(prio_vehicles)
+        if cleared_vehicles > 0:
+            reward += cleared_vehicles * 10.0
 
-        # penalize waiting time
         for v in prio_vehicles:
             reward -= 0.5 * traci.vehicle.getWaitingTime(v)
 
-        # congestion penalty
         reward -= 0.05 * self._get_total_queue_length()
 
-        # switching penalty
         if self.switched_last_step:
             reward -= 1.0
 
@@ -470,7 +463,6 @@ class PriorityCorridorFeature(BaseV2XFeature):
         self._vehicles_that_yielded.clear()
         self._priority_yield_total = 0
         
-        # RL reset
         self.prev_priority_count = 0
         self.switched_last_step = False
         try:
@@ -481,7 +473,7 @@ class PriorityCorridorFeature(BaseV2XFeature):
             
         logger.debug(f"[{self.feature_name}] Reset (RL mode: {self.rl_mode})")
 
-    # Helper functions for RL / TLS logic
+
     def _get_priority_vehicles(self):
         try:
             vehicles = traci.vehicle.getIDList()
@@ -493,34 +485,21 @@ class PriorityCorridorFeature(BaseV2XFeature):
             return []
 
     def _get_current_phase(self):
-        try:
-            return traci.trafficlight.getPhase(self.tls_id)
-        except Exception:
-            return 0
+        return traci.trafficlight.getPhase(self.tls_id)
 
     def _get_priority_queue_length(self):
         count = 0
-        try:
-            for v in self._get_priority_vehicles():
-                if traci.vehicle.getWaitingTime(v) > 0:
-                    count += 1
-        except Exception:
-            pass
+        for v in self._get_priority_vehicles():
+            if traci.vehicle.getWaitingTime(v) > 0:
+                count += 1
         return count
 
     def _get_other_queue_length(self):
-        try:
-            return traci.vehicle.getIDCount() - self._get_priority_queue_length()
-        except Exception:
-            return 0
+        return traci.vehicle.getIDCount() - self._get_priority_queue_length()
 
     def _get_total_queue_length(self):
-        try:
-            lanes = traci.lane.getIDList()
-            # This can be slow for large networks; use selectively
-            return sum(traci.lane.getLastStepHaltingNumber(l) for l in lanes)
-        except Exception:
-            return 0
+        lanes = traci.lane.getIDList()
+        return sum(traci.lane.getLastStepHaltingNumber(l) for l in lanes)
 
     def get_feature_name(self):
         return self.feature_name
