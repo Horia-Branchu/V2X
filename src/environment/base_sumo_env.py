@@ -66,14 +66,17 @@ class BaseSumoEnvironment(gym.Env):
     # when you implement a feature, import it here and add it to the feature
     # space ( I left dummy examples )
     def _setup_features(self, bsm, tls, priority, reroute):
-        """Initialize features based on flags"""
         self.features = []
+
         if bsm:
             self.features.append(BSMFeature("BSMFeature"))
+
         if tls:
             self.features.append(DynamicTLS("DynamicTLS", rl_mode=self.rl))
+
         if priority:
-            self.features.append(PriorityCorridorFeature("PriorityCorridorFeature"))
+            self.features.append(PriorityCorridorFeature("PriorityCorridorFeature", rl_mode=self.rl))
+
         if reroute:
             self.features.append(DummyFeature("RerouteFeature"))
 
