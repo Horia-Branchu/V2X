@@ -2,7 +2,7 @@ import gymnasium as gym
 import libsumo as traci
 import logging
 import sys
-from terminal_display import terminal_display
+from ui.terminal_display import terminal_display
 import platform
 import subprocess
 import numpy as np
@@ -10,10 +10,10 @@ import threading
 import itertools
 import sys
 import time
-from dummy_feature import DummyFeature
-from dynamic_tls import DynamicTLS
-from bsm_feature import BSMFeature
-from priority_corridor import PriorityCorridorFeature
+from features.dummy_feature import DummyFeature
+from features.dynamic_tls import DynamicTLS
+from features.bsm_feature import BSMFeature
+from features.priority_corridor import PriorityCorridorFeature
 
 # use a named logger for the project; features can log at DEBUG for RL and INFO for rule-based
 logger = logging.getLogger("v2x")

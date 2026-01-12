@@ -3,7 +3,7 @@ import argparse
 os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 
 from stable_baselines3 import PPO
-from base_sumo_env import BaseSumoEnvironment
+from environment.base_sumo_env import BaseSumoEnvironment
 
 def main():
     parser = argparse.ArgumentParser(description="Run RL features")

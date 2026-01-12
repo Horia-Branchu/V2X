@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 from pathlib import Path
-from data_collector import baseline_filename, data_dir_name
+from datacollector.data_collector import baseline_filename, data_dir_name
 
 def main():
     """Generate a Pearson correlation heatmap without time and veh_id and save it"""

@@ -5,7 +5,7 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import BaseCallback
-from base_sumo_env import BaseSumoEnvironment
+from environment.base_sumo_env import BaseSumoEnvironment
 
 class StopAtTimeCallback(BaseCallback):
     def __init__(self, stop_time, verbose=1):
