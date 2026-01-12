@@ -7,7 +7,7 @@ from pathlib import Path
 from stable_baselines3 import PPO
 from simulation_runner import SimulationRunner
 from environment.base_sumo_env import BaseSumoEnvironment
-from datas.data_collector import DataCollector, baseline_filename, data_dir_name, rl_filename
+from datacollector.data_collector import DataCollector, baseline_filename, data_dir_name, rl_filename
 from analysis import correlation_map, geo_emissions_plot, geo_plots, plots
 from collector_runner import RunnerWithCollector
 

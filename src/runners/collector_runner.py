@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 from runners.simulation_runner import SimulationRunner
 from environment.base_sumo_env import BaseSumoEnvironment
-from datas.data_collector import DataCollector, baseline_filename, v2x_filename, data_dir_name
+from datacollector.data_collector import DataCollector, baseline_filename, v2x_filename, data_dir_name
 from analysis import correlation_map, geo_emissions_plot, geo_plots, plots
 
 logger = logging.getLogger("v2x")

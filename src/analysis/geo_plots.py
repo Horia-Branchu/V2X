@@ -6,7 +6,7 @@ import pandas as pd
 import sumolib
 import logging
 
-from datas.data_collector import baseline_filename, v2x_filename, data_dir_name, rl_filename
+from datacollector.data_collector import baseline_filename, v2x_filename, data_dir_name, rl_filename
 from pathlib import Path
 
 logger = logging.getLogger("v2x")
