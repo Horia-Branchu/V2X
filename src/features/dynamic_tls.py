@@ -1,0 +1,436 @@
+import numpy as np
+import gymnasium as gym
+import logging
+import sys
+import libsumo as traci
+from ui.terminal_display import terminal_display
+from features.base_v2x_feature import BaseV2XFeature
+
+# feature-level logger; routine per-step data goes to DEBUG, important events should use INFO
+logger = logging.getLogger("v2x.features")
+
+
+class DynamicTLS(BaseV2XFeature):
+
+    def __init__(self, feature_name="DynamicTLS", enabled=True, rl_mode=False):
+        super().__init__(enabled)
+        self.feature_name = feature_name
+        self.rl_mode = rl_mode      # True for RL, False for rule-based
+        self.observation_size = 5   # Observation elements per traffic light
+        self.detection_range = 50.0 # meters
+        self.extend_time = 5.0      # seconds
+        self.lane_last_green = {}   # {lane_id: last_time_green}
+        self.tls_last_switch ={}    # {tls_id: last_switch_timestamp}
+        self.max_wait = 30.0        # seconds
+        self._tls_log_events = []   # per-step event buffer for compact TTY display or verbose non-TTY logs
+        self.phase_time = 0         # seconds
+        self._last_phase = {}       # {tls_id: phase_index_from_previous_step}
+
+        self.min_detection_range = 20.0
+        self.max_detection_range = 100.0
+
+        self.min_extend_time = 2.0
+        self.max_extend_time = 10.0
+
+        self.w_wait = 2.0
+        self.w_queue = 1.0
+        self.w_switch = 5.0
+
+        self._queue_clamp = 20
+    
+    def get_observation_space(self):
+        tls_list = traci.trafficlight.getIDList()
+        tls_count = len(tls_list)
+        low = np.array([0.0]*(tls_count*self.observation_size), dtype=np.float32)
+        high = []
+        for _ in range(tls_count):
+            high.extend([self._queue_clamp,self._queue_clamp,self._queue_clamp,self._queue_clamp,60.0])
+        high = np.array(high, dtype=np.float32) if high else np.array([0.0], dtype=np.float32)
+        return gym.spaces.Box(low=low, high=high, shape=(tls_count*self.observation_size,), dtype=np.float32)
+    
+    def get_action_space(self):
+        return gym.spaces.Box(low=0, high=1, shape=(3,), dtype=np.float32)
+
+    # Groups approaching vehicles by lane within the detection range
+    def get_approaching_vehicles_by_lane(self, tls_id):
+        lanes = traci.trafficlight.getControlledLanes(tls_id)
+        approaching = {}
+
+        for lane_id in lanes:
+            vehicle_ids = traci.lane.getLastStepVehicleIDs(lane_id)
+            lane_length = traci.lane.getLength(lane_id)
+            near_tls = []
+
+            for v_id in vehicle_ids:
+                vehicle_pos = traci.vehicle.getLanePosition(v_id)
+                if lane_length - vehicle_pos < self.detection_range:
+                    near_tls.append(v_id)
+            
+            if near_tls:
+                approaching[lane_id] = near_tls
+
+        return approaching
+
+    # Returns all lanes belonging to a strret
+    def get_lanes_on_same_street(self, tls_id, lane_id):
+        edge_id = traci.lane.getEdgeID(lane_id)
+        all_lanes = traci.trafficlight.getControlledLanes(tls_id)
+        same_street_lanes = [lane for lane in all_lanes if traci.lane.getEdgeID(lane) == edge_id]
+        return same_street_lanes
+
+    #Sets TLS light for named vehicle to green
+    def set_tls_green_for_vehicle(self, tls_id, v_id):
+        lane_id = traci.vehicle.getLaneID(v_id)
+        street_lanes = self.get_lanes_on_same_street(tls_id,lane_id)
+        tls_state = list(traci.trafficlight.getRedYellowGreenState(tls_id))
+        controlled_links = traci.trafficlight.getControlledLinks(tls_id)
+
+        for i, links in enumerate(controlled_links):
+            lane_found = any(link[0] in street_lanes for link in links)
+            tls_state[i] = 'G' if lane_found else 'r'
+
+        traci.trafficlight.setRedYellowGreenState(tls_id,''.join(tls_state))
+
+    # Checks if the TLS light for the named lane is green
+    def is_lane_green(self, tls_id,lane_id):
+        tls_state = traci.trafficlight.getRedYellowGreenState(tls_id)
+        controlled_links = traci.trafficlight.getControlledLinks(tls_id)
+
+        has_links = False
+
+        for i, links in enumerate(controlled_links):
+            for inc, out, via in links:
+                if inc == lane_id:
+                    has_links = True
+                    if tls_state[i].lower() != 'g':
+                        return False
+        return has_links
+    
+    # Collect SPaT (Signal Phase and Timing) messages into the per-step buffer.
+    # event_type: one of EXTEND_GREEN, SWITCH_GREEN, IMBALANCE, or GENERIC
+    def spat_message_log(self, message, event_type: str = "GENERIC"):
+        # Build structured verbose similar to BSM feature logs and a short snippet
+        timestamp = traci.simulation.getTime()
+        verbose = (
+            f"[{self.feature_name}] {event_type}: {message} @ {timestamp:.1f}s"
+        )
+        # short version for TTY display: first clause or truncated form
+        short = message.split(',')[0]
+        self._tls_log_events.append((verbose, short))
+
+    # Main dynamic TLS control function:
+    # - detects vehicles approaching intersections
+    # - extends green phase of the TLS if a vehicle is approaching from that side
+    # - if there are no vehicles approaching the green phase of the TLS but other lanes do, switch to the next phase
+    # - restores default TLS program after manual overrides
+    def dynamic_tls(self, tls_id):
+
+        current_time = traci.simulation.getTime()
+        phase = traci.trafficlight.getPhase(tls_id)
+        program = traci.trafficlight.getCompleteRedYellowGreenDefinition(tls_id)[0]
+        phases = program.phases
+        
+        if tls_id not in self.tls_last_switch:
+            self.tls_last_switch[tls_id] = current_time
+
+        time_in_phase = current_time - self.tls_last_switch[tls_id]
+
+        approaching_vehicles = self.get_approaching_vehicles_by_lane(tls_id)
+        edge_count = {edge: len(v_list) for edge, v_list in approaching_vehicles.items()}
+        total_approaching = sum(edge_count.values())
+
+        state = traci.trafficlight.getRedYellowGreenState(tls_id)
+        controlled = traci.trafficlight.getControlledLinks(tls_id)
+
+        green_lanes = []
+        for lane in approaching_vehicles.keys():
+            if self.is_lane_green(tls_id, lane):
+                green_lanes.append(lane)
+
+        cars_in_green = sum(len(approaching_vehicles.get(lane, [])) for lane in green_lanes)
+        cars_elsewhere = total_approaching - cars_in_green
+
+        
+
+        # 1. If lane hasn't had green for more than max_wait, force it
+        if approaching_vehicles:
+            starved_lane = None
+            max_wait_elapsed = -1.0
+
+            for lane in approaching_vehicles.keys():
+                if self.is_lane_green(tls_id, lane):
+                    continue
+                
+                last = self.lane_last_green.get(lane, current_time)
+                wait_elapsed = current_time - last
+                if wait_elapsed > max_wait_elapsed:
+                    max_wait_elapsed = wait_elapsed
+                    starved_lane = lane
+
+            if starved_lane and max_wait_elapsed >= self.max_wait:
+                target_phase_index = None
+
+                for p_idx, p in enumerate(phases):
+                    p_state = p.state
+                    for link_idx, links in enumerate(controlled):
+                        if link_idx < len(p_state) and p_state[link_idx] in ("G", "g"):
+                            if any(link[0] == starved_lane for link in links):
+                                target_phase_index = p_idx
+                                break
+                    if target_phase_index is not None:
+                        break
+
+                if target_phase_index is not None:
+                    if target_phase_index == phase:
+                        return
+                    traci.trafficlight.setPhase(tls_id, int(target_phase_index))
+                    traci.trafficlight.setPhaseDuration(tls_id, self.extend_time)
+                    self.tls_last_switch[tls_id] = current_time
+
+                    new_state = traci.trafficlight.getRedYellowGreenState(tls_id)
+                    new_controlled = traci.trafficlight.getControlledLinks(tls_id)
+                    for i, links in enumerate(new_controlled):
+                        if i < len(new_state) and new_state[i] in ("G", "g"):
+                            for inc, _, _ in links:
+                                self.lane_last_green[inc] = current_time
+
+                    self.spat_message_log(
+                        f"Starvation: switched phase {phase} -> {target_phase_index} to serve {starved_lane} (wait={max_wait_elapsed:.1f}s)",
+                        event_type="FORCED_GREEN",
+                    )
+                    return
+
+        # 2. Force switch if green phase has been on for too long
+        if time_in_phase >= self.extend_time:
+            next_phase = (phase + 1) % len(phases)
+            traci.trafficlight.setPhase(tls_id, next_phase)
+            traci.trafficlight.setPhaseDuration(tls_id, self.extend_time)
+            self.tls_last_switch[tls_id] = current_time
+
+            new_state = traci.trafficlight.getRedYellowGreenState(tls_id)
+            new_controlled = traci.trafficlight.getControlledLinks(tls_id)
+            for i, links in enumerate(new_controlled):
+                if i < len(new_state) and new_state[i] in ("G", "g"):
+                    for inc, _, _ in links:
+                        self.lane_last_green[inc] = current_time
+
+            self.spat_message_log(
+                f"Phase {phase} exceeded max green → switching to {next_phase}",
+                event_type="FORCED_SWITCH"
+            )
+            return
+
+        # 3. Extend green when vehicles are approaching from the side on which the TLS is green
+        if cars_in_green > 0:
+            traci.trafficlight.setPhaseDuration(tls_id, self.extend_time)
+            self.spat_message_log(
+                f"{cars_in_green} cars on green → extending",
+                event_type="EXTEND_GREEN"
+            )
+            return
+
+        # 4. No cars approaching from the side on which the TLS is green but there are vehicles waiting at the red light
+        if cars_in_green == 0 and cars_elsewhere > 0:
+            next_phase = (phase + 1) % len(phases)
+            traci.trafficlight.setPhase(tls_id, next_phase)
+            traci.trafficlight.setPhaseDuration(tls_id, self.extend_time)
+            self.tls_last_switch[tls_id] = current_time
+
+            new_state = traci.trafficlight.getRedYellowGreenState(tls_id)
+            new_controlled = traci.trafficlight.getControlledLinks(tls_id)
+            for i, links in enumerate(new_controlled):
+                if i < len(new_state) and new_state[i] in ("G", "g"):
+                    for inc, _, _ in links:
+                        self.lane_last_green[inc] = current_time
+
+            self.spat_message_log(
+                f"No cars on green but {cars_elsewhere} cars elsewhere → switching phase",
+                event_type="SWITCH_GREEN"
+            )
+            return
+
+    def take_action(self, action):
+        # clear per-step buffer
+        self._tls_log_events.clear()
+        tls_list = traci.trafficlight.getIDList()
+
+        if self.rl_mode:
+            alpha, beta = self._parse_rl_action(action)
+            
+            self.detection_range = self.min_detection_range + alpha * (self.max_detection_range - self.min_detection_range)
+            self.extend_time = self.min_extend_time + beta * (self.max_extend_time - self.min_extend_time)
+            
+            logger.debug(f"[{self.feature_name}] RL params - detection_range={self.detection_range:.1f}m, extend_time={self.extend_time:.2f}s")
+        
+        for tls_id in tls_list:
+            self.dynamic_tls(tls_id)
+
+        # Emit aggregated output
+        self._log_tls_events()
+    
+    def _parse_rl_action(self, action):
+        if isinstance(action, np.ndarray):
+            action_flat = action.flatten()
+            if len(action_flat) >= 2:
+                return float(action_flat[1]), float(action_flat[2])
+            elif len(action_flat) == 1:
+                return float(action_flat[0]), 0.5
+        elif isinstance(action, (list, tuple)) and len(action) >= 2:
+            return float(action[1]), float(action[2])
+        
+        return 0.5, 0.5
+
+    def get_observation(self):
+        obs = []
+        directions = ["N", "S", "E", "W"]
+        tls_list = traci.trafficlight.getIDList()
+
+        for tls_id in tls_list:
+            lanes = traci.trafficlight.getControlledLanes(tls_id)
+
+            groups = {d: [] for d in directions}
+            for lane in lanes:
+                edge = lane.split("_")[0]
+                for d in directions:
+                    if edge.startswith(d):
+                        groups[d].append(lane)
+
+            for d in directions:
+                q = sum(traci.lane.getLastStepVehicleNumber(l) for l in groups[d])
+                obs.append(min(q, self._queue_clamp))
+
+            elapsed = traci.trafficlight.getNextSwitch(tls_id) - traci.simulation.getTime()
+            elapsed = max(0.0, min(float(elapsed), 60.0))
+            obs.append(elapsed)
+
+        return np.array(obs, dtype=np.float32) if obs else np.array([0.0], dtype=np.float32)
+
+    def calculate_reward(self):
+        tls_list = traci.trafficlight.getIDList()
+        total_waiting = 0.0
+        total_queue = 0.0
+        switches = 0
+        bonus = 0.0
+        throughput = 0.0
+        efficiency_bonus = 0.0
+
+        current_phase = {}
+        for tls_id in tls_list:
+            phase = traci.trafficlight.getPhase(tls_id)
+            current_phase[tls_id] = phase
+            last_phase = self._last_phase.get(tls_id, phase)
+            if phase != last_phase:
+                switches += 1
+
+            detection_range = getattr(self, 'detection_range', self.detection_range)
+            extend_time = getattr(self, 'extend_time', self.extend_time)
+            lanes = traci.trafficlight.getControlledLanes(tls_id)
+            lane_queues = {}
+            green_lanes_served = 0
+            
+            for lane in lanes:
+                vehs = traci.lane.getLastStepVehicleIDs(lane)
+                halting_count = traci.lane.getLastStepHaltingNumber(lane)
+                total_queue += halting_count
+
+                lane_waiting = 0.0
+                detected_in_range = 0
+                
+                for v in vehs:
+                    try:
+                        pos = traci.vehicle.getLanePosition(v)
+                        lane_len = traci.lane.getLength(lane)
+                        dist = max(0.0, lane_len - pos)
+                        speed = traci.vehicle.getSpeed(v)
+                    except Exception:
+                        dist = 0.0
+                        speed = 0.0
+
+                    if 0 <= dist <= detection_range:
+                        detected_in_range += 1
+                        lane_waiting += traci.vehicle.getWaitingTime(v)
+                        if speed > 1.0:
+                            throughput += speed * 0.2
+
+                total_waiting += lane_waiting
+                lane_queues[lane] = halting_count
+                
+                if self.is_lane_green(tls_id, lane) and detected_in_range > 0:
+                    green_lanes_served += detected_in_range
+
+            if lane_queues:
+                max_queue_lane = max(lane_queues, key=lane_queues.get)
+                min_queue_lane = min(lane_queues, key=lane_queues.get)
+                max_queue = lane_queues[max_queue_lane]
+                min_queue = lane_queues[min_queue_lane]
+
+                if self.is_lane_green(tls_id, max_queue_lane):
+                    bonus += 1.0 * max_queue  
+
+                elif self.is_lane_green(tls_id, min_queue_lane) and max_queue - min_queue > 5:
+                    bonus += 0.5 * max_queue
+                    
+            efficiency_bonus += green_lanes_served * 0.3
+        
+        self._last_phase = current_phase
+
+        num_vehicles = sum(traci.lane.getLastStepVehicleNumber(lane) 
+                          for tls_id in tls_list 
+                          for lane in traci.trafficlight.getControlledLanes(tls_id))
+        
+        if num_vehicles > 0:
+            avg_waiting = total_waiting / num_vehicles
+        else:
+            avg_waiting = 0.0
+
+        param_efficiency = 0.0
+        if 40 <= detection_range <= 80:
+            param_efficiency += 1.0
+        else:
+            param_efficiency -= abs(detection_range - 60) * 0.1  
+            
+        if 4 <= extend_time <= 8:
+            param_efficiency += 1.0
+        else:
+            param_efficiency -= abs(extend_time - 6) * 0.2  
+
+        time_penalty = traci.simulation.getTime() * 0.001
+
+        reward = -(self.w_wait * avg_waiting + self.w_queue * total_queue + self.w_switch * switches + time_penalty) + bonus + throughput + efficiency_bonus + param_efficiency
+        
+        logger.debug(f"[{self.feature_name}] reward parts: "
+                     f"avg_waiting={avg_waiting:.2f}, queue={total_queue:.1f}, switches={switches}, "
+                     f"bonus={bonus:.1f}, throughput={throughput:.1f}, efficiency={efficiency_bonus:.1f}, "
+                     f"param_eff={param_efficiency:.2f}, time_penalty={time_penalty:.2f} => reward={reward:.3f}")
+        return float(reward)
+
+    def get_feature_name(self):
+        return self.feature_name
+
+    def _log_tls_events(self):
+
+        if not self._tls_log_events:
+            return
+
+        if sys.stdout.isatty():
+            tls_count = len(self._tls_log_events)
+            latest_short = self._tls_log_events[-1][1]
+            summary = f"[{self.feature_name}] | tls_events={tls_count} | {latest_short}"
+            terminal_display.update("TLS", summary)
+            terminal_display.render()
+        else:
+            for verbose, _ in self._tls_log_events:
+                logger.info(verbose)
+
+    def feature_step(self):
+        det = getattr(self, "detection_range", self.detection_range)
+        ext = getattr(self, "extend_time", self.extend_time)
+        logger.debug(f"[{self.feature_name}] Step | detection_range={det:.1f}m extend_time={ext:.2f}s")
+
+    def feature_reset(self):
+        self._tls_log_events.clear()
+        self._last_phases = {tls_id: traci.trafficlight.getPhase(tls_id) for tls_id in traci.trafficlight.getIDList()}
+        self.phase_time = 0
+        self.lane_last_green.clear()
+        self.tls_last_switch.clear()
+        logger.debug(f"[{self.feature_name}] Reset")

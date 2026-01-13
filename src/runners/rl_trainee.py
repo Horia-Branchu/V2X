@@ -1,14 +1,28 @@
 import os
 import argparse
+import datetime
 os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 
 from stable_baselines3 import PPO
-from base_sumo_env import BaseSumoEnvironment
+from stable_baselines3.common.callbacks import BaseCallback
+from environment.base_sumo_env import BaseSumoEnvironment
 
+class StopAtTimeCallback(BaseCallback):
+    def __init__(self, stop_time, verbose=1):
+        super().__init__(verbose)
+        self.stop_time = stop_time
+
+    def _on_step(self) -> bool:
+        if datetime.datetime.now() >= self.stop_time:
+            print("\n=== STOP TIME REACHED. ENDING TRAINING ===")
+            return False  
+        return True
+    
 def main(args, sumo_config="config/simulation.sumocfg"):
     enabled_features = []
     if args.bsm: enabled_features.append("bsm")
     if args.tls: enabled_features.append("tls")
+    if args.priority: enabled_features.append("priority")
 
     if len(enabled_features) == 0:
         print("ERROR: Please specify one feature for RL!")
@@ -28,9 +42,18 @@ def main(args, sumo_config="config/simulation.sumocfg"):
         gui=False,
         tls=args.tls,
         bsm=args.bsm,
-        priority=False,
-        reroute=False
+        priority=args.priority,
+        reroute=False,
+        rl=True
     )
+
+    start_time = datetime.datetime.now()
+    # Let's set a duration based instead of fixed date, or just a far future date
+    stop_time = start_time + datetime.timedelta(hours=24) # Run for 24 hours max
+    # or just fix the date to future
+    stop_time = datetime.datetime(2026, 12, 12, 21, 0)
+
+    callback = StopAtTimeCallback(stop_time)
 
     # train RL agent for this feature
     model = PPO(
@@ -45,7 +68,7 @@ def main(args, sumo_config="config/simulation.sumocfg"):
 
     print(f"Training {feature_name} feature...")
 
-    model.learn(total_timesteps=10000)
+    model.learn(total_timesteps=10_000_000_000, callback=callback)
     model.save(f"{feature_name}_feature_model")
 
     # test the trained feature
@@ -66,5 +89,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run rl modules")
     parser.add_argument("--tls",  action="store_true", help="Run simulation_runner", default=False)
     parser.add_argument("--bsm", action="store_true", help="Run data_collector", default=False)
+    parser.add_argument("--priority", action="store_true", help="Run priority RL", default=False)
 
     main(args=parser.parse_args())
