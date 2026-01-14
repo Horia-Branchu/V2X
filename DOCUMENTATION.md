@@ -22,7 +22,6 @@ V2X/
 │   ├── features/  
 │   │   ├── [base_v2x_feature.py](#base-v2x-feature)  
 │   │   ├── bsm_feature.py  
-│   │   ├── dummy_feature.py  
 │   │   ├── [dynamic_tls.py](#dynamic-tls)  
 │   │   └── [priority_corridor.py](#priority-corridor-feature)  
 │   ├── runners/  
