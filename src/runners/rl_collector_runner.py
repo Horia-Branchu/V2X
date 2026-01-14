@@ -6,8 +6,8 @@ import sys
 from pathlib import Path
 from stable_baselines3 import PPO
 from simulation_runner import SimulationRunner
-from base_sumo_env import BaseSumoEnvironment
-from data_collector import DataCollector, baseline_filename, data_dir_name, rl_filename
+from environment.base_sumo_env import BaseSumoEnvironment
+from datacollector.data_collector import DataCollector, baseline_filename, data_dir_name, rl_filename
 from analysis import correlation_map, geo_emissions_plot, geo_plots, plots
 from collector_runner import RunnerWithCollector
 
@@ -57,7 +57,7 @@ class RLRunnerWithCollector(SimulationRunner):
 def resolve_config():
     """Using the normal config if it exists at the normal path"""
     here = Path(__file__).resolve().parent
-    cfg = here.parent / "config" / "simulation.sumocfg"
+    cfg = here.parent.parent / "config" / "simulation.sumocfg"
     if not cfg.exists():
         raise FileNotFoundError("simulation.sumocfg not found under ../config/")
     return str(cfg)

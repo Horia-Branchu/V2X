@@ -5,7 +5,7 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import BaseCallback
-from base_sumo_env import BaseSumoEnvironment
+from environment.base_sumo_env import BaseSumoEnvironment
 
 class StopAtTimeCallback(BaseCallback):
     def __init__(self, stop_time, verbose=1):
@@ -22,6 +22,7 @@ def main(args, sumo_config="config/simulation.sumocfg"):
     enabled_features = []
     if args.bsm: enabled_features.append("bsm")
     if args.tls: enabled_features.append("tls")
+    if args.priority: enabled_features.append("priority")
 
     if len(enabled_features) == 0:
         print("ERROR: Please specify one feature for RL!")
@@ -41,12 +42,17 @@ def main(args, sumo_config="config/simulation.sumocfg"):
         gui=False,
         tls=args.tls,
         bsm=args.bsm,
-        priority=False,
+        priority=args.priority,
         reroute=False,
         rl=True
     )
 
-    stop_time = datetime.datetime(2025, 12, 12, 21, 0)  # YEAR, MONTH, DAY, HOUR, MINUTE
+    start_time = datetime.datetime.now()
+    # Let's set a duration based instead of fixed date, or just a far future date
+    stop_time = start_time + datetime.timedelta(hours=24) # Run for 24 hours max
+    # or just fix the date to future
+    stop_time = datetime.datetime(2026, 12, 12, 21, 0)
+
     callback = StopAtTimeCallback(stop_time)
 
     # train RL agent for this feature
@@ -83,5 +89,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run rl modules")
     parser.add_argument("--tls",  action="store_true", help="Run simulation_runner", default=False)
     parser.add_argument("--bsm", action="store_true", help="Run data_collector", default=False)
+    parser.add_argument("--priority", action="store_true", help="Run priority RL", default=False)
 
     main(args=parser.parse_args())

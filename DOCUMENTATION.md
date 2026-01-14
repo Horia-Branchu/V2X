@@ -1,32 +1,44 @@
 # Documentation
 
 ## Project Structure
-├── data <br>
-├── config <br>
-│   ├── network.net.xml <br>
-│   ├── routes.rou.xml <br>
-│   └── simulation.sumocfg <br>
-├── src <br>
-│   ├── agents <br>
-│   │   └── [ppo.py](#ppo)<br>
-│   ├── [base_sumo_env.py](#base-sumo-environment) <br>
-│   ├── [base_v2x_feature.py](#base-v2x-feature) <br>
-│   ├── [dynamic_tls.py](#dynamic-tls) <br>
-│   ├── [priority_corridor.py](#priority-corridor-feature) <br>
-│   ├── [terminal_display.py](#terminal-display) <br>
-│   └── [simulation_runner.py](#simulation-runner-class) <br>
+
+V2X/  
+├── config/ <br>
+│   ├── simulation.sumocfg <br>
+│   ├── generate_all_vehicles_scripts.py <br>
+│   ├── time_to_run.txt <br>
+├── src/ <br>
+│   ├── analysis/ - Data analysis scripts  
+│   │   ├── correlation_map.py  
+│   │   ├── geo_emissions_plot.py  
+│   │   ├── geo_plots.py  
+│   │   └── plots.py  
+│   ├── data/  
+│   │   └── vehicles.csv  
+│   ├── datacollector/  
+│   │   └── data_collector.py  
+│   ├── environment/  
+│   │   └── [base_sumo_env.py](#base-sumo-environment)  
+│   ├── features/  
+│   │   ├── [base_v2x_feature.py](#base-v2x-feature)  
+│   │   ├── bsm_feature.py  
+│   │   ├── [dynamic_tls.py](#dynamic-tls)  
+│   │   └── [priority_corridor.py](#priority-corridor-feature)  
+│   ├── runners/  
+│   │   ├── collector_runner.py  
+│   │   ├── rl_collector_runner.py  
+│   │   ├── rl_tester.py  
+│   │   ├── rl_trainee.py  
+│   │   └── [simulation_runner.py](#simulation-runner-class)  
+│   └── ui/ <br>
+│       ├── progress_bar.py  
+│       └── [terminal_display.py](#terminal-display)  
+├── main.py <br>
+├── [DOCUMENTATION.md](#Documentation)  
 
 
-## Modules
 
-# PPO
-This script creates a SUMO environment, validates it against Gymnasium
-standards, initializes a PPO model with specific hyperparameters (learning
-rate: 0.0003, n_steps: 2048, batch_size: 64, n_epochs: 10), trains the model
-for 100,000 timesteps, saves the trained model to disk, then tests it by
-running 1000 simulation steps with deterministic actions while automatically
-handling episode resets.
-
+# Modules
 
 # Base Sumo Environment
 ### Constructor
@@ -232,11 +244,50 @@ Initializes the DynamicTLS feature module responsible for adaptive traffic light
 **Input:**
 - `feature_name` (str): Name of the feature (default: "DynamicTLS").
 - `enabled` (bool): Whether the feature is active (default: True).
+- `rl_mode` (bool): Whether RL mode is active (default: False).
 
 **Output:**
 `None` (initializes internal state)
 
-**What it does:** Creates and configures the dynamic traffic-light-control feature, defining observation/action sizes, vehicle detection range, green-light extension duration, and bookkeeping structures for temporary TLS overrides.
+**What it does:** Creates and configures the dynamic traffic-light-control feature, defining observation/action sizes, vehicle detection range, green-light extension duration, parameters used for calculating the reward and bookkeeping structures for temporary TLS overrides.
+
+### get_observation_space
+Defines the observation space for the dynamic TLS feature.
+
+**Input:** `None`
+
+**Output:**
+- `gym.spaces.Box`: An observation space represeting the state of all traffic lights.
+
+**What it does:** 
+- Retrieves all traffic light IDs from the SUMO simulation.
+- DeterDetermines the total number of traffic lights.
+- Builds a flattened observation vector containing state information for each traffic light
+- Sets lower bounds to 0.0 for all observation values.
+- Stes upper bounds based on:
+   - Queue length limits (20) for incoming lanes
+   - A fixed maximum value (60.0) for a time-based feature
+- Returns a Gym Box space suitable for reinforcement learning agents
+- Observation structure per traffic light:
+   - 4 values: Queue lengths for controlled lanes (clamped)
+   - 1 value: Time since last green phase 
+
+### get_action_space
+Defines the action space for the dynamic TLS feature.
+
+**Input:** `None`
+
+**Output:**
+- `gym.spaces.Discrete`: An action space with values in the range [0, 1].
+
+**What it does:**
+- Creates a continuous action space represented by a 3-dimensional vector
+- Each action component is bounded between 0 and 1
+- Uses float32 precision for compatibility with Gym and RL algorithms
+- Action structure:
+   - A vector of length 3
+   - Each elemnt represents a normalized control signal for the traffic light logic (maintain, extend green, switch to next phase)
+
 
 ### get_approaching_vehicles_by_lane(tls_id)
 Groups approaching vehicles per lane within the configured detection range.
@@ -321,17 +372,146 @@ Main rule-based adaptive traffic signal controller.
 5. Switches to green if only one direction has approaching vehicles.
 6. Resolves lane imbalance by temporarily giving green to lightly used lanes.
 
+### _parse_rl_action(action)
+Parses and normalizes the reinforcement learning action vector.
+
+**Input:**
+- `action`: (array-like): Action provided by the RL agent.
+
+**Output:**
+- `(alpha, beta)` (tuple of floats):
+   - `alpha`: Detection range scaling factor.
+   - `beta`: Green phase extention time scaling factor.
+
+**What it does:**
+- Flattens the action input if it is a NumPy array
+- Extracts the second and third elements of the action vector
+- Handles edge cases where the action vector is shorter than expected
+- Falls back to default neutral values (0.5, 0.5) if the input is invalid or missing
+
+
 ### take_action(action)
 Executes a traffic-light update step.
 
 **Input:**
-- `action`: RL action (currently unused).
+- `action`: RL action.
 
 **Output:**
 - `None`
 
 **What it does:**
+- Clears the per-step traffic light event buffer.
+- Retrieves all traffic light IDs in the simulation.
+- If RL mode is enabled:
+   - Parses the action vector into control parameters.
+   - Updates the vehicle detection range
+   - Updates the green phase extension duration.
 - Loops through all TLS systems and applies dynamic_tls() to each.
+- Logs aggregated traffic light events for the current simulation step.
+
+### get_observation
+Constructs the current observation vector for the reinforcement learning agent.
+
+**Input:** `None`
+
+**Output:**
+- `observation` (np.ndarray): A flattened observation vector representing the current state of all traffic lights.
+
+**What it does:**
+- Retrieves all traffic light IDs in the simulation.
+- For each traffic light:
+   - Groups controlled lanes by cardinal direction (N, S, E, W)
+   - Computes the total number of vehicles per direction
+   - Clamps queue lengths to a predefined maximum
+   - Computes the remaining time until the next phase switch
+- Appends all values into a single flattened observation vector
+- Observation structure per traffic light:
+   - 4 values: Queue lengths for controlled lanes (clamped)
+   - 1 value: Time until the next traffic light phase switch
+
+### calculate_reward
+Computes the reinforcement learning reward based on traffic efficiency and control behavior.
+
+**Input:** `None`
+
+**Output:**
+- `reward` (float): Calculated reward value.
+
+**What it does:**
+- Iterates over all traffic lights in the simulation
+- Measures traffic performance metrics including:
+   - Vehicle waiting time
+   - Queue lengths
+   - Traffic light phase switches
+   - Throughput of moving vehicles
+- Applies bonuses and penalties to encourage efficient traffic control
+- Aggregates all components into a single scalar reward
+
+**Reward components:**
+- `Penalties:`
+   - Average waiting time (avg_waiting): Mean waiting time of vehicles within the detection range
+   - Total queue length (total_queue): Number of halting vehicles across all lanes
+   - Phase switches (switches): Penalizes excessive signal switching
+   - Time penalty: Small increasing penalty proportional to simulation time
+- `Bonuses:`
+   - Queue prioritization bonus: Rewards serving lanes with the largest queues
+   - Throughput bonus: Rewards vehicles moving at non-zero speeds
+   - Efficiency bonus: Rewards serving green lanes with detected vehicles
+   - Parameter efficiency bonus: Rewards reasonable values of detection range and extension time
+
+### get_feature_name
+Returns the name of the feature module.
+
+**Input:** `None`
+
+**Output:**
+- `feature_name` (str): Name of the feature.
+
+**What it does:** Provides a human-readable identifier for the feature. Used for logging, debugging, and feature management within the framework.
+
+### _log_tls_events()
+Logs and/or displays traffic light events collected during the current simulation step.
+
+**Input:** `None` 
+
+**Output:** `None`
+
+**What it does:**
+- Checks if there are any traffic light events in the per-step buffer _tls_log_events.
+- If running in a terminal (sys.stdout.isatty()):
+   - Displays a concise summary in the terminal using terminal_display
+   - Shows the total number of events and the latest event snippet
+- If not running in a terminal:
+   - Logs all verbose events using the feature-level logger (logger.info)
+- Provides a unified mechanism to visualize or log traffic light activity per step, supporting both TTY and non-TTY environments
+
+### feature_step
+Logs a debug message at each simulation step for monitoring feature parameters.
+
+**Input:** `None`
+
+**Output:** `None`
+
+**What it does:** 
+- Retrieves the current values of the RL parameters:
+   - detection_range (distance for detecting approaching vehicles)
+   - extend_time (green phase extension duration)
+- Logs a debug message containing the feature name and current parameter values
+- Provides step-by-step visibility into the feature’s internal state for debugging or analysis
+
+### feature_reset
+Resets the internal state of the DynamicTLS feature at the start of a simulation or episode.
+
+**Input:** `None`
+
+**Output:** `None`
+
+**What it does:**
+- Clears the per-step traffic light event buffer (_tls_log_events)
+- Records the current phase for all traffic lights in _last_phases
+- Resets the cumulative phase time counter (phase_time)
+- Clears lane-specific and traffic light-specific green timing records (lane_last_green and tls_last_switch)
+- Logs a debug message indicating that the feature has been reset
 
 # Priority Corridor Feature
 
@@ -611,8 +791,12 @@ def __init__(self, config_path, sumo_env, steps, **kwargs)
    - Multiple features: Run manual feature test mode
    - No features: Run standard simulation
 6. Executes the chosen simulation mode
+<br>
+<br>
+<br>
 
-## Usage Examples
+
+# Usage and Examples
 
 **Run simulation without features for specified steps:**
 ```bash
