@@ -4,6 +4,9 @@
 
 V2X/  
 ├── config/ <br>
+│   ├── simulation.sumocfg <br>
+│   ├── generate_all_vehicles_scripts.py <br>
+│   ├── time_to_run.txt <br>
 ├── src/ <br>
 │   ├── analysis/ - Data analysis scripts  
 │   │   ├── correlation_map.py  
