@@ -789,8 +789,12 @@ def __init__(self, config_path, sumo_env, steps, **kwargs)
    - Multiple features: Run manual feature test mode
    - No features: Run standard simulation
 6. Executes the chosen simulation mode
+<br>
+<br>
+<br>
 
-## Usage Examples
+
+# Usage and Examples
 
 **Run simulation without features for specified steps:**
 ```bash
