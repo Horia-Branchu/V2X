@@ -246,7 +246,11 @@ class PriorityCorridorFeature(BaseV2XFeature):
                 # Cast numpy types to int if needed
                 if hasattr(action, 'item'):
                      # if it's a 0-d array or scalar
-                    act = int(action.item())
+                    if getattr(action, 'size', 1) == 1:
+                        act = int(action.item())
+                    else:
+                         # fallback for 1D arrays
+                        act = int(action[0])
                 else:
                     act = int(action)
 
@@ -498,8 +502,16 @@ class PriorityCorridorFeature(BaseV2XFeature):
         return traci.vehicle.getIDCount() - self._get_priority_queue_length()
 
     def _get_total_queue_length(self):
-        lanes = traci.lane.getIDList()
-        return sum(traci.lane.getLastStepHaltingNumber(l) for l in lanes)
+        if self.tls_id:
+            try:
+                lanes = traci.trafficlight.getControlledLanes(self.tls_id)
+                # Use set to avoid double counting lanes with multiple connections
+                lanes = set(lanes)
+                return sum(traci.lane.getLastStepHaltingNumber(l) for l in lanes)
+            except Exception as e:
+                logger.debug(f"[{self.feature_name}] Error getting controlled lanes: {e}")
+                return 0
+        return 0
 
     def get_feature_name(self):
         return self.feature_name
