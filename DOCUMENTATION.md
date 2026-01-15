@@ -14,7 +14,7 @@ V2X/
 │   │   ├── geo_plots.py  
 │   │   └── plots.py  
 │   ├── data/  
-│   │   └── vehicles.csv  
+│   │   └── [parquet files](#parquet-files)  
 │   ├── datacollector/  
 │   │   └── [data_collector.py](#data-collector)  
 │   ├── environment/  
@@ -39,6 +39,13 @@ V2X/
 
 
 # Modules
+
+### Data
+
+* **About the files**: `The vehicle_state_baseline.parquet`, `vehicle_state_rule_based.parquet`, and `vehicle_state_rl.parquet` files store the full history of the traffic for each scenario so we can compare how they perform.
+* **File Structure**: These files use a **columnar storage layout**, meaning data is grouped by category (like "speed" or "CO2") rather than by row. This allows the system to skip unnecessary data when reading, making analysis significantly faster.
+* **Format Details**: The data is stored in binary format, which means you cannot read the raw text directly like a normal text file without using a data tool (like Parquet viewer).
+* **Generation**: This folder is automatically created whenever you run either the standard or the RL data collectors.
 
 # Data Collector
 ### Constructor
@@ -740,8 +747,6 @@ Initializes the RL-specific runner with a collector and a trained model.
 
 **What it does:** It sets up the execution environment to use an AI model for decision-making instead of random or fixed rules.
 
----
-
 ### resolve_config
 A utility function that locates the SUMO configuration file within the project structure.
 
@@ -753,8 +758,6 @@ A utility function that locates the SUMO configuration file within the project s
 
 **What it does:** * It resolves the path to the `config/` directory relative to the script's parent folder.
 * It verifies the existence of the configuration file and raises a `FileNotFoundError` if the file is missing.
-
----
 
 ### run_until_end
 Executes the RL-controlled simulation until the scenario ends naturally.
@@ -769,8 +772,6 @@ Executes the RL-controlled simulation until the scenario ends naturally.
 * It steps the environment with the predicted action and collects data at every timestamp.
 * It stops when the simulation is `terminated` or `truncated` and then calls `collector.flush()` to save the RL results.
 
----
-
 ### run_with_steps
 Runs the RL-controlled simulation for a fixed number of steps.
 
@@ -783,8 +784,6 @@ Runs the RL-controlled simulation for a fixed number of steps.
 * The AI model controls simulation features at every step.
 * It records all metrics to the collector and saves them to a Parquet file at the end of the step count.
 
----
-
 ### build_env (Helper)
 A utility function to create the RL-specific environment.
 
@@ -796,8 +795,6 @@ A utility function to create the RL-specific environment.
 **Output:** `BaseSumoEnvironment`.
 
 **What it does:** It returns an environment instance configured specifically for AI interaction, ensuring the observation and action spaces match the model's requirements.
-
----
 
 ### main()
 The main orchestration logic for comparing Baseline traffic vs. Reinforcement Learning performance.
