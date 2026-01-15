@@ -504,97 +504,146 @@ Resets the internal state of the DynamicTLS feature at the start of a simulation
 # Priority Corridor Feature
 
 ### Constructor
-Initializes the `PriorityCorridorFeature` responsible for giving way to emergency vehicles by creating a “priority corridor” on the same edge.
+Initializes the `PriorityCorridorFeature` responsible for giving way to emergency vehicles and optimizing their passage through intersections using rule-based or RL-based control.
 
 **Input:**
 - `feature_name` (str): Name of the feature (default: `"PriorityCorridorFeature"`).
 - `enabled` (bool): Whether the feature is active (default: `True`).
+- `rl_mode` (bool): Whether Reinforcement Learning mode is enabled (default: `False`).
 
-**Output:** `None`
+**Output:** `None` (initializes object state)
 
 **What it does:**  
-Sets up internal state: a cache of emergency-vehicle IDs, per-step log events, and a running counter of successful yield maneuvers. Uses constants:
-- `PRIORITY_TYPE`: vehicle type treated as emergency (e.g. `"emergency"`).
-- `RETURN_DISTANCE`: distance after which cars return to normal lane-change behavior.
-- `LANE_FREE_DIST`: local clearance to consider a target lane “free enough”.
-- `MAX_BULK_COMMANDS_PER_STEP`: safety cap on TraCI commands per step.
+Sets up internal state for both rule-based and RL modes. 
+- **Rule-based state:** Caches emergency vehicle IDs, total yields, and per-step logs.
+- **RL state:** Manages tracking for vehicle counts, TLS status, and reward calculation metrics.
+- **Constants:**
+    - `PRIORITY_TYPE`: Default vehicle type for emergency (`"emergency"`).
+    - `RETURN_DISTANCE`: Distance (200m) after which yielding vehicles return to normal behavior.
+    - `LANE_FREE_DIST`: Minimum clearance (8m) required for a safe yield merge.
 
+### get_observation_space
+Defines the observation space for the priority feature.
+
+**Input:** `None`
+
+**Output:**
+- `gym.spaces.Box`: A 6-dimensional vector (RL mode) or a 3-dimensional vector (Rule-based mode).
+
+**What it does:**
+In RL mode, it returns a Box space representing:
+1. `Priority Count`: Number of active priority vehicles.
+2. `Average Waiting Time`: Mean waiting time of priority vehicles.
+3. `Minimum Distance`: Proximity of the closest priority vehicle to the intersection.
+4. `TLS Phase`: Current phase index of the controlled traffic light.
+5. `Priority Queue`: Number of priority vehicles currently waiting.
+6. `Other Queue`: Number of non-priority vehicles waiting.
+
+### get_action_space
+Defines the available actions for the priority feature.
+
+**Input:** `None`
+
+**Output:**
+- `gym.spaces.Discrete`: 3 possible actions (RL mode) or 2 (Rule-based mode).
+
+**What it does:**
+In RL mode, provides discrete actions:
+- `0`: Keep current traffic light phase.
+- `1`: Switch to the next traffic light phase.
+- `2`: Force green for the priority corridor (Phase 0).
+
+### get_observation
+Collects the current state of the priority corridor for the RL agent.
+
+**Input:** `None`
+
+**Output:**
+- `np.ndarray`: A normalized 6-element observation vector.
+
+**What it does:**
+- Retrieves all active priority vehicles and computes their count, average wait time, and minimum distance.
+- Queries the traffic light for its current phase and queue lengths.
+- Normalizes all values (e.g., dividing distance by `max_distance`, count by 10) and clips them between 0.0 and 1.0.
+
+### calculate_reward
+Computes the reward signal for the RL agent based on priority vehicle efficiency.
+
+**Input:** `None`
+
+**Output:**
+- `float`: Total step reward.
+
+**What it does:**
+- **Bonuses:** `+10.0` for every priority vehicle that successfully clears the intersection.
+- **Penalties:**
+    - `-0.5` per step for every priority vehicle that is stopped (speed < 0.1).
+    - `-0.05` per unit of total queue length at the intersection.
+    - `-1.0` for switching traffic light phases (encourages stability).
 
 ### _cache_positions_and_detect_emergencies
+**Input:** `vehicle_ids` (Iterable[str])
 
-**Input:**
-- `vehicle_ids` (Iterable[str])
+**Output:** `positions` (dict), `edges` (dict), `edge_to_vehicle_ids` (dict)
 
-**Output:**
-- `positions` (dict): `vehicle_id -> (x, y)` world coordinates.
-- `edges` (dict): `vehicle_id -> edge_id`.
-- `edge_to_vehicle_ids` (dict): `edge_id -> list[vehicle_id]`.
-
-**What it does:**  
-Makes one TraCI pass to cache positions and edges for all vehicles and updates `_emergency_vehicle_ids` based on `PRIORITY_TYPE`.
-
+**What it does:** Performs a single batch TraCI pass to cache vehicle state and identifies new emergency vehicles based on `PRIORITY_TYPE`.
 
 ### _choose_best_lane_for_emergency(edge_id)
+**Input:** `edge_id` (str)
 
-**Input:**
-- `edge_id` (str)
+**Output:** `least_used_lane` (int)
 
-**Output:**
-- `least_used_lane` (int)
-
-**What it does:**  
-Counts vehicles per lane on the given edge using `traci.lane.getLastStepVehicleIDs` and returns the lane index with the fewest vehicles. If TraCI fails, falls back to lane `0`.
-
+**What it does:** Analyzes all lanes on the given edge and returns the index of the lane with the fewest vehicles, ensuring the priority vehicle has the clearest path.
 
 ### _lane_is_free_enough(edge_id, lane_index, positions, vehicle_id)
+**Input:** `edge_id`, `lane_index`, `positions`, `vehicle_id`
 
-**Input:**
-- `edge_id` (str)
-- `lane_index` (int)
-- `positions` (dict)
-- `vehicle_id` (str)
+**Output:** `bool`
 
-**Output:**
-- `bool`
-
-**What it does:**  
-Checks if the target lane has enough local space for a safe merge by comparing the merging vehicle’s `(x, y)` position to other vehicles in that lane and enforcing a minimum distance `LANE_FREE_DIST` in both axes.
-
+**What it does:** Validates if a target lane has sufficient longitudinal and lateral clearance (`LANE_FREE_DIST`) for a vehicle to merge safely.
 
 ### _log_priority_events()
-
-**Input:** `None` (uses internal buffers)
+**Input:** `None`
 
 **Output:** `None`
 
-**What it does:**  
-Aggregates the per-step yield events:
-- **TTY (interactive terminal):** shows a compact line via `terminal_display` with total yields and the latest short event.
-- **Non-TTY (piped to file):** writes each verbose event string to the logger at `INFO` level.
-
+**What it does:** Aggregates and displays yield events. In interactive terminals, it shows a "live" summary via `terminal_display`; otherwise, it writes verbose logs to the system logger.
 
 ### take_action(action)
-
-**Input:**
-- `action`: current action
+**Input:** `action`: Action decided by the agent or runner.
 
 **Output:** `None`
 
-**What it does:**  
-Implements the priority corridor behavior each simulation step:
+**What it does:**
+1. **Always:** Executes rule-based lane yielding logic (corridor creation).
+2. **If RL Mode:** Parses the provided action (0, 1, or 2) and applies it to the controlled traffic light using `traci.trafficlight.setPhase`.
 
-1. Reads all vehicle IDs and caches `positions`, `edges`, and `edge_to_vehicle_ids`.
-2. Filters active emergency vehicles and, for each:
-   - Finds its edge and the least-used lane via `_choose_best_lane_for_emergency`.
-3. For every other vehicle on that edge:
-   - Skips vehicles behind the emergency vehicle using `traci.vehicle.getLanePosition` (lane progression, not `(x, y)`).
-   - Uses the squared distance to the emergency vehicle and `RETURN_DISTANCE` to decide when to restore default `laneChangeMode`.
-   - Only processes vehicles in the lane chosen for the emergency vehicle.
-   - Skips stopped vehicles (speed `< 0.1`).
-   - Builds a small list of adjacent target lanes (left/right) and checks them with `_lane_is_free_enough`.
-   - If `traci.vehicle.couldChangeLane` allows it, performs a short `changeLane` into a safe adjacent lane, increments the total yield counter, and records a verbose + short log entry.
-4. Respects `MAX_BULK_COMMANDS_PER_STEP` to avoid flooding TraCI.
-5. Calls `_log_priority_events()` once at the end of the step.
+### _perform_lane_yielding()
+**Input:** `None`
+
+**Output:** `None`
+
+**What it does:** The core logic for corridor creation. It iterates through vehicles on the same edge as emergency vehicles and commands them to change lanes if they are in the path and have a safe adjacent lane to move into.
+
+### feature_reset
+**Input:** `None`
+
+**Output:** `None`
+
+**What it does:** Resets all internal counters, caches, and identifies the first available traffic light ID to control in RL mode.
+
+### _get_priority_vehicles()
+**Input:** `None`
+
+**Output:** `list[str]`: IDs of vehicles matching priority types (`emergency`, `ambulance`, `police`, `fire`).
+
+### _get_total_queue_length()
+**Input:** `None`
+
+**Output:** `int`: Total number of halting vehicles across all lanes controlled by the traffic light.
+
+### get_feature_name
+Provides the human-readable name of the feature for logging.
 
 # Terminal Display
 
