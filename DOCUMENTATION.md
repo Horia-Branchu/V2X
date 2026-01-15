@@ -2,39 +2,39 @@
 
 ## Project Structure
 
-V2X/  
+V2X/
 ├── config/ <br>
 │   ├── simulation.sumocfg <br>
 │   ├── generate_all_vehicles_scripts.py <br>
 │   ├── time_to_run.txt <br>
 ├── src/ <br>
-│   ├── analysis/ - Data analysis scripts  
-│   │   ├── correlation_map.py  
-│   │   ├── geo_emissions_plot.py  
-│   │   ├── geo_plots.py  
-│   │   └── plots.py  
-│   ├── data/  
-│   │   └── vehicles.csv  
-│   ├── datacollector/  
-│   │   └── data_collector.py  
-│   ├── environment/  
-│   │   └── [base_sumo_env.py](#base-sumo-environment)  
-│   ├── features/  
-│   │   ├── [base_v2x_feature.py](#base-v2x-feature)  
-│   │   ├── bsm_feature.py  
-│   │   ├── [dynamic_tls.py](#dynamic-tls)  
-│   │   └── [priority_corridor.py](#priority-corridor-feature)  
-│   ├── runners/  
-│   │   ├── collector_runner.py  
-│   │   ├── rl_collector_runner.py  
-│   │   ├── rl_tester.py  
-│   │   ├── rl_trainee.py  
-│   │   └── [simulation_runner.py](#simulation-runner-class)  
+│   ├── analysis/ - Data analysis scripts
+│   │   ├── correlation_map.py
+│   │   ├── geo_emissions_plot.py
+│   │   ├── geo_plots.py
+│   │   └── plots.py
+│   ├── data/
+│   │   └── vehicles.csv
+│   ├── datacollector/
+│   │   └── data_collector.py
+│   ├── environment/
+│   │   └── [base_sumo_env.py](#base-sumo-environment)
+│   ├── features/
+│   │   ├── [base_v2x_feature.py](#base-v2x-feature)
+│   │   ├── bsm_feature.py
+│   │   ├── [dynamic_tls.py](#dynamic-tls)
+│   │   └── [priority_corridor.py](#priority-corridor-feature)
+│   ├── runners/
+│   │   ├── collector_runner.py
+│   │   ├── rl_collector_runner.py
+│   │   ├── [rl_tester.py](#rl-tester)
+│   │   ├── [rl_trainee.py](#rl-trainee)
+│   │   └── [simulation_runner.py](#simulation-runner-class)
 │   └── ui/ <br>
-│       ├── progress_bar.py  
-│       └── [terminal_display.py](#terminal-display)  
+│       ├── progress_bar.py
+│       └── [terminal_display.py](#terminal-display)
 ├── main.py <br>
-├── [DOCUMENTATION.md](#Documentation)  
+├── [DOCUMENTATION.md](#Documentation)
 
 
 
@@ -259,7 +259,7 @@ Defines the observation space for the dynamic TLS feature.
 **Output:**
 - `gym.spaces.Box`: An observation space represeting the state of all traffic lights.
 
-**What it does:** 
+**What it does:**
 - Retrieves all traffic light IDs from the SUMO simulation.
 - DeterDetermines the total number of traffic lights.
 - Builds a flattened observation vector containing state information for each traffic light
@@ -270,7 +270,7 @@ Defines the observation space for the dynamic TLS feature.
 - Returns a Gym Box space suitable for reinforcement learning agents
 - Observation structure per traffic light:
    - 4 values: Queue lengths for controlled lanes (clamped)
-   - 1 value: Time since last green phase 
+   - 1 value: Time since last green phase
 
 ### get_action_space
 Defines the action space for the dynamic TLS feature.
@@ -472,7 +472,7 @@ Returns the name of the feature module.
 ### _log_tls_events()
 Logs and/or displays traffic light events collected during the current simulation step.
 
-**Input:** `None` 
+**Input:** `None`
 
 **Output:** `None`
 
@@ -492,7 +492,7 @@ Logs a debug message at each simulation step for monitoring feature parameters.
 
 **Output:** `None`
 
-**What it does:** 
+**What it does:**
 - Retrieves the current values of the RL parameters:
    - detection_range (distance for detecting approaching vehicles)
    - extend_time (green phase extension duration)
@@ -524,7 +524,7 @@ Initializes the `PriorityCorridorFeature` responsible for giving way to emergenc
 
 **Output:** `None`
 
-**What it does:**  
+**What it does:**
 Sets up internal state: a cache of emergency-vehicle IDs, per-step log events, and a running counter of successful yield maneuvers. Uses constants:
 - `PRIORITY_TYPE`: vehicle type treated as emergency (e.g. `"emergency"`).
 - `RETURN_DISTANCE`: distance after which cars return to normal lane-change behavior.
@@ -542,7 +542,7 @@ Sets up internal state: a cache of emergency-vehicle IDs, per-step log events, a
 - `edges` (dict): `vehicle_id -> edge_id`.
 - `edge_to_vehicle_ids` (dict): `edge_id -> list[vehicle_id]`.
 
-**What it does:**  
+**What it does:**
 Makes one TraCI pass to cache positions and edges for all vehicles and updates `_emergency_vehicle_ids` based on `PRIORITY_TYPE`.
 
 
@@ -554,7 +554,7 @@ Makes one TraCI pass to cache positions and edges for all vehicles and updates `
 **Output:**
 - `least_used_lane` (int)
 
-**What it does:**  
+**What it does:**
 Counts vehicles per lane on the given edge using `traci.lane.getLastStepVehicleIDs` and returns the lane index with the fewest vehicles. If TraCI fails, falls back to lane `0`.
 
 
@@ -569,7 +569,7 @@ Counts vehicles per lane on the given edge using `traci.lane.getLastStepVehicleI
 **Output:**
 - `bool`
 
-**What it does:**  
+**What it does:**
 Checks if the target lane has enough local space for a safe merge by comparing the merging vehicle’s `(x, y)` position to other vehicles in that lane and enforcing a minimum distance `LANE_FREE_DIST` in both axes.
 
 
@@ -579,7 +579,7 @@ Checks if the target lane has enough local space for a safe merge by comparing t
 
 **Output:** `None`
 
-**What it does:**  
+**What it does:**
 Aggregates the per-step yield events:
 - **TTY (interactive terminal):** shows a compact line via `terminal_display` with total yields and the latest short event.
 - **Non-TTY (piped to file):** writes each verbose event string to the logger at `INFO` level.
@@ -592,7 +592,7 @@ Aggregates the per-step yield events:
 
 **Output:** `None`
 
-**What it does:**  
+**What it does:**
 Implements the priority corridor behavior each simulation step:
 
 1. Reads all vehicle IDs and caches `positions`, `edges`, and `edge_to_vehicle_ids`.
@@ -639,7 +639,7 @@ def __init__(self, keys=None, logger_obj=None)
 
 **Output:** `None`
 
-**What it does:** 
+**What it does:**
 - **In TTY (interactive terminal):** Moves cursor up to overwrite previous lines in-place, creating a "live update" effect without scrolling
 - **In Non-TTY (piped output, file logging):** Emits only changed values as INFO log messages to avoid spam
 - On first call, initializes the display by printing all current lines
@@ -667,6 +667,154 @@ from terminal_display import terminal_display
 terminal_display.update("ENV", "Simulation running...")
 terminal_display.render()
 ```
+
+# RL Tester
+
+## Overview
+Runs a SUMO Reinforcement Learning simulation using a **pre-trained PPO model**.
+Exactly **one feature** (TLS or BSM) must be selected, with optional GUI support.
+
+---
+
+## Environment Configuration
+CUDA is disabled to force CPU-only execution.
+
+---
+
+## Command-Line Interface
+
+### Input Arguments
+- `--tls` (bool): Run Traffic Light System RL
+- `--bsm` (bool): Run Basic Safety Message RL
+- `--gui` (bool): Enable SUMO GUI
+
+### Constraints
+- Only **one** feature may be selected
+- Invalid selections terminate execution
+
+### Exit Codes
+- `68`: No feature selected
+- `67`: Multiple features selected
+- `56`: Model not found
+
+---
+
+## Environment Initialization
+
+### BaseSumoEnvironment
+Initializes the SUMO environment in RL mode.
+
+**Key Parameters:**
+- `sumo_config` (str): `config/simulation.sumocfg`
+- `tls`, `bsm` (bool): Feature toggles
+- `gui` (bool): GUI enablement
+- `rl` (bool): Enabled
+
+---
+
+## Model Loading
+Loads a PPO model named:
+- `tls_feature_model` or `bsm_feature_model`
+
+Execution stops if the model is missing.
+
+---
+
+## Simulation Execution
+Runs a deterministic PPO-controlled simulation until termination.
+
+**Tracked:**
+- Total reward
+- Total steps
+
+---
+
+## Cleanup and Output
+Closes the environment and prints final metrics.
+
+---
+
+# RL Trainee
+## Overview
+This script trains and evaluates a Reinforcement Learning (RL) agent for a **single SUMO feature** (TLS, BSM, or Priority) using the PPO algorithm from Stable-Baselines3. Training is time-bounded using a custom callback.
+
+---
+
+## Environment Configuration
+CUDA is disabled to enforce CPU-only execution.
+
+---
+
+## Command-Line Interface
+
+### Input Arguments
+- `--tls` (bool): Train Traffic Light System RL
+- `--bsm` (bool): Train Basic Safety Message RL
+- `--priority` (bool): Train Priority-based RL
+
+### Constraints
+- Exactly **one** feature must be specified
+- Invalid selections cause controlled termination
+
+### Exit Codes
+- `68`: No feature specified
+- `67`: Multiple features specified
+
+---
+
+## StopAtTimeCallback
+
+### Purpose
+Custom PPO callback that stops training when a predefined wall-clock time is reached.
+
+**Input:**
+- `stop_time` (datetime): Absolute time to stop training
+
+**What it does:**
+- Terminates training gracefully once the stop time is exceeded
+
+---
+
+## Environment Initialization
+
+### BaseSumoEnvironment
+Creates a SUMO RL environment with only the selected feature enabled.
+
+**Key Parameters:**
+- `sumo_config` (str): SUMO configuration file
+- `tls`, `bsm`, `priority` (bool): Feature toggles
+- `gui` (bool): Disabled
+- `rl` (bool): Enabled
+
+---
+
+## Training Phase
+
+### PPO Training
+Initializes and trains a PPO agent with fixed hyperparameters.
+
+**Highlights:**
+- Policy: `MlpPolicy`
+- Device: CPU
+- Training duration: Time-limited (up to configured stop time)
+- Timesteps: Effectively unbounded, stopped via callback
+
+**Output:**
+- Saved model: `<feature>_feature_model`
+
+---
+
+## Testing Phase
+
+### Post-Training Evaluation
+Runs a short deterministic rollout to validate the trained policy.
+
+**Process:**
+- Reset environment
+- Execute up to 1000 steps
+- Stop on episode termination
+
+---
 
 # Simulation Runner Class
 
