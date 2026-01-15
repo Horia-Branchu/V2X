@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 from runners.simulation_runner import SimulationRunner
 from environment.base_sumo_env import BaseSumoEnvironment
-from datacollector.data_collector import DataCollector, baseline_filename, v2x_filename, rule_based_filename, data_dir_name
+from datacollector.data_collector import DataCollector, baseline_filename, v2x_filename, rule_based_filename, data_dir_name, DEFAULT_MAX_POINTS
 from analysis import correlation_map, geo_emissions_plot, geo_plots, plots
 
 logger = logging.getLogger("v2x")
@@ -77,7 +77,7 @@ def main():
     temp_parser.add_argument(
         "--max-points",
         type=int,
-        default=20000000000 ,
+        default=DEFAULT_MAX_POINTS ,
         help="Maximum number of sampled points used in plotting",
     )
     temp_parser.add_argument(
@@ -103,7 +103,7 @@ def main():
     if not (args.bsm or args.tls or args.priority or args.reroute):
         raise ValueError(
             "\nNo v2x features enabled\n"
-            "At least one of --bsm --tls --priority --reroute must be true"
+            "At least one of --bsm --tls --priority must be true"
         )
 
     project_root = Path(__file__).resolve().parents[2]

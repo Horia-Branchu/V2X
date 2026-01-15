@@ -6,7 +6,7 @@ import numpy as np
 import matplotlib as mpl
 
 from pathlib import Path
-from datacollector.data_collector import baseline_filename, v2x_filename, rule_based_filename, rl_filename, data_dir_name
+from datacollector.data_collector import baseline_filename, v2x_filename, rule_based_filename, rl_filename, data_dir_name, DEFAULT_MAX_POINTS
 
 RUN_LABELS = {"baseline": "Baseline", "rule_based": "Rule-based", "rl": "RL",}
 RUN_ORDER = ["baseline", "rule_based", "rl"]
@@ -29,7 +29,7 @@ def enforce_features(df, x: str, y: str):
         if f not in df.columns:
             raise ValueError(f"Required feature '{f}' not found in dataset.")
 
-def balanced_sample(df: pd.DataFrame, total_points: int, random_state: int = 42) -> pd.DataFrame:
+def balanced_sample(df: pd.DataFrame, total_points: int | None, random_state: int = 42) -> pd.DataFrame:
     if "run" not in df.columns:
         raise ValueError("Column 'run' is missing; cannot stratify.")
 
@@ -290,6 +290,6 @@ def main(max_points: int):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run plots with custom sampling")
-    parser.add_argument("--max-points", type=int, default=200000000)
+    parser.add_argument("--max-points", type=int, default=DEFAULT_MAX_POINTS)
     args = parser.parse_args()
     main(args.max_points)

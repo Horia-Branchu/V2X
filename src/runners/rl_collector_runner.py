@@ -7,7 +7,7 @@ from pathlib import Path
 from stable_baselines3 import PPO
 from simulation_runner import SimulationRunner
 from environment.base_sumo_env import BaseSumoEnvironment
-from datacollector.data_collector import DataCollector, baseline_filename, data_dir_name, rl_filename
+from datacollector.data_collector import DataCollector, baseline_filename, data_dir_name, rl_filename, DEFAULT_MAX_POINTS
 from analysis import correlation_map, geo_emissions_plot, geo_plots, plots
 from collector_runner import RunnerWithCollector
 
@@ -78,7 +78,7 @@ def build_env(config_path, *, gui, rl, tls, bsm, priority, reroute):
 def main():
     #Argument parsing to include max points
     temp_parser = argparse.ArgumentParser(add_help=False)
-    temp_parser.add_argument("--max-points", type=int, default=200000000000)
+    temp_parser.add_argument("--max-points", type=int, default=DEFAULT_MAX_POINTS)
     local_args, remaining = temp_parser.parse_known_args()
     max_points = local_args.max_points
     sys.argv = [sys.argv[0]] + remaining

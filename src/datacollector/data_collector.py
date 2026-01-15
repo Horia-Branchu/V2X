@@ -8,6 +8,7 @@ v2x_filename = "vehicle_state_v2x.parquet"
 rule_based_filename = "vehicle_state_rule_based.parquet"
 rl_filename = "vehicle_state_rl.parquet"
 data_dir_name = "data"
+DEFAULT_MAX_POINTS = None
 
 class DataCollector:
     def __init__(self,output_filename,reset_on_start=True):
