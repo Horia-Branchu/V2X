@@ -31,7 +31,7 @@ V2X/
 │   │   ├── rl_trainee.py  
 │   │   └── [simulation_runner.py](#simulation-runner-class)  
 │   └── ui/ <br>
-│       ├── progress_bar.py  
+│       ├── [progress_bar.py](#progress-bar)  
 │       └── [terminal_display.py](#terminal-display)  
 ├── main.py <br>
 ├── [DOCUMENTATION.md](#Documentation)  
@@ -667,6 +667,89 @@ from terminal_display import terminal_display
 terminal_display.update("ENV", "Simulation running...")
 terminal_display.render()
 ```
+
+# Progress Bar
+
+### Constructor
+```python
+def __init__(self, logger: logging.Logger)
+```
+
+**Input:**
+- `logger` (logging.Logger): Logger instance for recording progress events
+
+**Output:** `None` (initializes object state)
+
+**What it does:** Initializes the progress bar with ANSI color codes for terminal display, sets up tracking variables for trips and progress, and stores the logger reference.
+
+### load_trip_paths()
+
+**Input:** `None`
+
+**Output:** `None`
+
+**What it does:** Scans the `config/` directory recursively for all `.trips.xml` files and stores their paths in `self.file_paths` for later processing.
+
+### count_total_trips()
+
+**Input:** `None`
+
+**Output:** `None`
+
+**What it does:** Iterates through all trip files found by `load_trip_paths()`, counts occurrences of `<trip ` tags in each file, and stores the total count in `self.total_trips`.
+
+### update(step)
+
+**Input:**
+- `step` (int): Number of trips/steps to increment the progress counter by (default: 1)
+
+**Output:** `None`
+
+**What it does:** Increments the current progress counter and calls `display()` to render the updated progress bar.
+
+### return_progress_color(percent)
+
+**Input:**
+- `percent` (float): Progress percentage (0-100)
+
+**Output:**
+- (str): ANSI color code string
+
+**What it does:** Returns color based on progress level:
+- RED (< 50%)
+- YELLOW (50-80%)
+- GREEN (≥ 80%)
+
+### display_string(current, end, info, steps)
+
+**Input:**
+- `current` (int): Current progress value (default: 0)
+- `end` (int): End/total value (default: 1)
+- `info` (str): Additional info text to display (default: '')
+- `steps` (bool): If True, display as "Steps"; if False, display as "Arrived vehicles" (default: False)
+
+**Output:**
+- (str): Formatted progress bar string
+
+**What it does:** Generates a progress bar display string with the current progress percentage and optional info text.
+
+### display_string_bar(current, end, info)
+
+**Input:**
+- `current` (int): Current progress value (default: 0)
+- `end` (int): End/total value (default: 1)
+- `info` (str): Additional info text to display (default: '')
+
+**Output:**
+- (str): Formatted progress bar with filled and empty segments
+
+**What it does:** 
+- Clears the line to prevent display artifacts
+- Calculates progress percentage
+- Determines color based on percentage
+- Creates a 50-character bar with filled (█) and empty (-) segments
+- Returns formatted string with color-coded bar and percentage
+
 
 # Simulation Runner Class
 
