@@ -1,32 +1,44 @@
 # Documentation
 
 ## Project Structure
-├── data <br>
-├── config <br>
-│   ├── network.net.xml <br>
-│   ├── routes.rou.xml <br>
-│   └── simulation.sumocfg <br>
-├── src <br>
-│   ├── agents <br>
-│   │   └── [ppo.py](#ppo)<br>
-│   ├── [base_sumo_env.py](#base-sumo-environment) <br>
-│   ├── [base_v2x_feature.py](#base-v2x-feature) <br>
-│   ├── [dynamic_tls.py](#dynamic-tls) <br>
-│   ├── [priority_corridor.py](#priority-corridor-feature) <br>
-│   ├── [terminal_display.py](#terminal-display) <br>
-│   └── [simulation_runner.py](#simulation-runner-class) <br>
+
+V2X/  
+├── config/ <br>
+│   ├── simulation.sumocfg <br>
+│   ├── generate_all_vehicles_scripts.py <br>
+│   ├── time_to_run.txt <br>
+├── src/ <br>
+│   ├── analysis/ - Data analysis scripts  
+│   │   ├── correlation_map.py  
+│   │   ├── geo_emissions_plot.py  
+│   │   ├── geo_plots.py  
+│   │   └── plots.py  
+│   ├── data/  
+│   │   └── vehicles.csv  
+│   ├── datacollector/  
+│   │   └── data_collector.py  
+│   ├── environment/  
+│   │   └── [base_sumo_env.py](#base-sumo-environment)  
+│   ├── features/  
+│   │   ├── [base_v2x_feature.py](#base-v2x-feature)  
+│   │   ├── bsm_feature.py  
+│   │   ├── [dynamic_tls.py](#dynamic-tls)  
+│   │   └── [priority_corridor.py](#priority-corridor-feature)  
+│   ├── runners/  
+│   │   ├── collector_runner.py  
+│   │   ├── rl_collector_runner.py  
+│   │   ├── [rl_tester.py](#rl_tester)  
+│   │   ├── [rl_trainee.py](#rl_trainee)  
+│   │   └── [simulation_runner.py](#simulation-runner-class)  
+│   └── ui/ <br>
+│       ├── [progress_bar.py](#progress-bar)  
+│       └── [terminal_display.py](#terminal-display)  
+├── [main.py](#main) <br>
+├── [DOCUMENTATION.md](#Documentation)  
 
 
-## Modules
 
-# PPO
-This script creates a SUMO environment, validates it against Gymnasium
-standards, initializes a PPO model with specific hyperparameters (learning
-rate: 0.0003, n_steps: 2048, batch_size: 64, n_epochs: 10), trains the model
-for 100,000 timesteps, saves the trained model to disk, then tests it by
-running 1000 simulation steps with deterministic actions while automatically
-handling episode resets.
-
+# Modules
 
 # Base Sumo Environment
 ### Constructor
@@ -247,7 +259,7 @@ Defines the observation space for the dynamic TLS feature.
 **Output:**
 - `gym.spaces.Box`: An observation space represeting the state of all traffic lights.
 
-**What it does:** 
+**What it does:**
 - Retrieves all traffic light IDs from the SUMO simulation.
 - DeterDetermines the total number of traffic lights.
 - Builds a flattened observation vector containing state information for each traffic light
@@ -258,7 +270,7 @@ Defines the observation space for the dynamic TLS feature.
 - Returns a Gym Box space suitable for reinforcement learning agents
 - Observation structure per traffic light:
    - 4 values: Queue lengths for controlled lanes (clamped)
-   - 1 value: Time since last green phase 
+   - 1 value: Time since last green phase
 
 ### get_action_space
 Defines the action space for the dynamic TLS feature.
@@ -460,7 +472,7 @@ Returns the name of the feature module.
 ### _log_tls_events()
 Logs and/or displays traffic light events collected during the current simulation step.
 
-**Input:** `None` 
+**Input:** `None`
 
 **Output:** `None`
 
@@ -480,7 +492,7 @@ Logs a debug message at each simulation step for monitoring feature parameters.
 
 **Output:** `None`
 
-**What it does:** 
+**What it does:**
 - Retrieves the current values of the RL parameters:
    - detection_range (distance for detecting approaching vehicles)
    - extend_time (green phase extension duration)
@@ -548,10 +560,7 @@ Defines the available actions for the priority feature.
 - `gym.spaces.Discrete`: 3 possible actions (RL mode) or 2 (Rule-based mode).
 
 **What it does:**
-In RL mode, provides discrete actions:
-- `0`: Keep current traffic light phase.
-- `1`: Switch to the next traffic light phase.
-- `2`: Force green for the priority corridor (Phase 0).
+Makes one TraCI pass to cache positions and edges for all vehicles and updates `_emergency_vehicle_ids` based on `PRIORITY_TYPE`.
 
 ### get_observation
 Collects the current state of the priority corridor for the RL agent.
@@ -580,6 +589,7 @@ Computes the reward signal for the RL agent based on priority vehicle efficiency
     - `-0.5` per step for every priority vehicle that is stopped (speed < 0.1).
     - `-0.05` per unit of total queue length at the intersection.
     - `-1.0` for switching traffic light phases (encourages stability).
+Counts vehicles per lane on the given edge using `traci.lane.getLastStepVehicleIDs` and returns the lane index with the fewest vehicles. If TraCI fails, falls back to lane `0`.
 
 ### _cache_positions_and_detect_emergencies
 **Input:** `vehicle_ids` (Iterable[str])
@@ -594,6 +604,8 @@ Computes the reward signal for the RL agent based on priority vehicle efficiency
 **Output:** `least_used_lane` (int)
 
 **What it does:** Analyzes all lanes on the given edge and returns the index of the lane with the fewest vehicles, ensuring the priority vehicle has the clearest path.
+**What it does:**
+Checks if the target lane has enough local space for a safe merge by comparing the merging vehicle’s `(x, y)` position to other vehicles in that lane and enforcing a minimum distance `LANE_FREE_DIST` in both axes.
 
 ### _lane_is_free_enough(edge_id, lane_index, positions, vehicle_id)
 **Input:** `edge_id`, `lane_index`, `positions`, `vehicle_id`
@@ -620,6 +632,9 @@ Computes the reward signal for the RL agent based on priority vehicle efficiency
 
 ### _perform_lane_yielding()
 **Input:** `None`
+Aggregates the per-step yield events:
+- **TTY (interactive terminal):** shows a compact line via `terminal_display` with total yields and the latest short event.
+- **Non-TTY (piped to file):** writes each verbose event string to the logger at `INFO` level.
 
 **Output:** `None`
 
@@ -644,6 +659,21 @@ Computes the reward signal for the RL agent based on priority vehicle efficiency
 
 ### get_feature_name
 Provides the human-readable name of the feature for logging.
+**What it does:**
+Implements the priority corridor behavior each simulation step:
+
+1. Reads all vehicle IDs and caches `positions`, `edges`, and `edge_to_vehicle_ids`.
+2. Filters active emergency vehicles and, for each:
+   - Finds its edge and the least-used lane via `_choose_best_lane_for_emergency`.
+3. For every other vehicle on that edge:
+   - Skips vehicles behind the emergency vehicle using `traci.vehicle.getLanePosition` (lane progression, not `(x, y)`).
+   - Uses the squared distance to the emergency vehicle and `RETURN_DISTANCE` to decide when to restore default `laneChangeMode`.
+   - Only processes vehicles in the lane chosen for the emergency vehicle.
+   - Skips stopped vehicles (speed `< 0.1`).
+   - Builds a small list of adjacent target lanes (left/right) and checks them with `_lane_is_free_enough`.
+   - If `traci.vehicle.couldChangeLane` allows it, performs a short `changeLane` into a safe adjacent lane, increments the total yield counter, and records a verbose + short log entry.
+4. Respects `MAX_BULK_COMMANDS_PER_STEP` to avoid flooding TraCI.
+5. Calls `_log_priority_events()` once at the end of the step.
 
 # Terminal Display
 
@@ -676,7 +706,7 @@ def __init__(self, keys=None, logger_obj=None)
 
 **Output:** `None`
 
-**What it does:** 
+**What it does:**
 - **In TTY (interactive terminal):** Moves cursor up to overwrite previous lines in-place, creating a "live update" effect without scrolling
 - **In Non-TTY (piped output, file logging):** Emits only changed values as INFO log messages to avoid spam
 - On first call, initializes the display by printing all current lines
@@ -704,6 +734,157 @@ from terminal_display import terminal_display
 terminal_display.update("ENV", "Simulation running...")
 terminal_display.render()
 ```
+
+# Progress Bar
+
+### Constructor
+```python
+def __init__(self, logger: logging.Logger)
+```
+
+**Input:**
+- `logger` (logging.Logger): Logger instance for recording progress events
+
+**Output:** `None` (initializes object state)
+
+**What it does:** Initializes the progress bar with ANSI color codes for terminal display, sets up tracking variables for trips and progress, and stores the logger reference.
+
+### load_trip_paths()
+
+**Input:** `None`
+
+**Output:** `None`
+
+**What it does:** Scans the `config/` directory recursively for all `.trips.xml` files and stores their paths in `self.file_paths` for later processing.
+
+### count_total_trips()
+
+**Input:** `None`
+
+**Output:** `None`
+
+**What it does:** Iterates through all trip files found by `load_trip_paths()`, counts occurrences of `<trip ` tags in each file, and stores the total count in `self.total_trips`.
+
+### update(step)
+
+**Input:**
+- `step` (int): Number of trips/steps to increment the progress counter by (default: 1)
+
+**Output:** `None`
+
+**What it does:** Increments the current progress counter and calls `display()` to render the updated progress bar.
+
+### return_progress_color(percent)
+
+**Input:**
+- `percent` (float): Progress percentage (0-100)
+
+**Output:**
+- (str): ANSI color code string
+
+**What it does:** Returns color based on progress level:
+- RED (< 50%)
+- YELLOW (50-80%)
+- GREEN (≥ 80%)
+
+### display_string(current, end, info, steps)
+
+**Input:**
+- `current` (int): Current progress value (default: 0)
+- `end` (int): End/total value (default: 1)
+- `info` (str): Additional info text to display (default: '')
+- `steps` (bool): If True, display as "Steps"; if False, display as "Arrived vehicles" (default: False)
+
+**Output:**
+- (str): Formatted progress bar string
+
+**What it does:** Generates a progress bar display string with the current progress percentage and optional info text.
+
+### display_string_bar(current, end, info)
+
+**Input:**
+- `current` (int): Current progress value (default: 0)
+- `end` (int): End/total value (default: 1)
+- `info` (str): Additional info text to display (default: '')
+
+**Output:**
+- (str): Formatted progress bar with filled and empty segments
+
+**What it does:**
+- Clears the line to prevent display artifacts
+- Calculates progress percentage
+- Determines color based on percentage
+- Creates a 50-character bar with filled (█) and empty (-) segments
+- Returns formatted string with color-coded bar and percentage
+
+# RL Tester
+**Input**
+- **Command-line flags**
+  - `--tls` (bool): Run Traffic Light System RL
+  - `--bsm` (bool): Run Basic Safety Message RL
+  - `--gui` (bool): Enable SUMO GUI
+
+- **Internal parameters**
+  - `sumo_config` (str): `config/simulation.sumocfg`
+
+---
+
+**Output**
+- **Simulation metrics**
+  - Total accumulated reward
+  - Total number of steps executed
+
+- **Process exit codes**
+  - `68`: No feature selected
+  - `67`: Multiple features selected
+  - `56`: Required model not found
+
+---
+
+**What it does**
+- Validates CLI arguments to ensure exactly one RL feature (TLS or BSM) is selected
+- Initializes the SUMO reinforcement learning environment with the selected feature enabled
+- Optionally enables the SUMO GUI for visual inspection
+- Loads the corresponding pre-trained PPO model (`tls_feature_model` or `bsm_feature_model`)
+- Terminates execution if the required model file is missing
+- Runs a deterministic PPO-controlled simulation until the episode terminates
+- Tracks cumulative reward and total step count during execution
+- Closes the environment and prints final simulation metrics
+
+---
+
+# RL Trainee
+**Input**
+- **Command-line flags**
+  - `--tls` (bool): Enable Traffic Light System RL training
+  - `--bsm` (bool): Enable Basic Safety Message RL training
+  - `--priority` (bool): Enable Priority-based RL training
+
+- **Internal parameters**
+  - `stop_time` (datetime): Absolute wall-clock time at which training must stop
+  - `sumo_config` (str): Path to the SUMO configuration file
+
+---
+
+**Output**
+- **Trained PPO model**
+  - Saved as: `<feature>_feature_model`
+- **Process exit codes**
+  - `68`: No feature specified
+  - `67`: Multiple features specified
+
+---
+
+**What it does**
+- Disables CUDA to enforce CPU-only execution
+- Validates CLI arguments to ensure exactly one SUMO feature is selected
+- Initializes a SUMO-based reinforcement learning environment with only the chosen feature enabled
+- Trains a PPO agent (Stable-Baselines3) using fixed hyperparameters and an unbounded timestep budget
+- Uses a custom `StopAtTimeCallback` to terminate training when a predefined wall-clock time is reached
+- Saves the trained model for the selected feature
+- Performs a short, deterministic post-training evaluation rollout (up to 1000 steps) to validate the policy
+
+---
 
 # Simulation Runner Class
 
@@ -829,29 +1010,61 @@ def __init__(self, config_path, sumo_env, steps, **kwargs)
    - No features: Run standard simulation
 6. Executes the chosen simulation mode
 
-## Usage Examples
+# Main
 
-**Run simulation without features for specified steps:**
+Entry point for the V2X simulation framework. Provides a command-line interface to launch different simulation runners.
+
+### main()
+
+**Input:** `None` (reads from command-line arguments)
+
+**Output:** `None`
+
+**What it does:**
+1. Creates an argument parser with mutually exclusive group for runner selection
+2. Defines four available commands:
+   - `--runner`: Launch the simulation runner
+   - `--collect`: Launch the data collector runner
+   - `--rl`: Launch the RL training module (rl_trainee)
+   - `--rltest`: Launch the RL testing module (rl_tester)
+3. Parses the arguments and validates that one command is selected
+4. Maps the selected command to its corresponding module path
+5. Adds the `src/` directory to the Python path
+6. Uses `runpy.run_module()` to execute the selected module, passing through any remaining arguments
+
+**Command Mapping:**
+- `--runner` → `runners.simulation_runner`
+- `--collect` → `runners.collector_runner`
+- `--rl` → `runners.rl_trainee`
+- `--rltest` → `runners.rl_tester`
+
+<br>
+<br>
+<br>
+
+# Usage and Examples
+
+**Run simulation with specified steps:**
 ```bash
 python main.py --runner --steps 100
 ```
 
-**Run simulation until vehicles are depleted with TLS enabled:**
+**Run data collection:**
 ```bash
-python main.py --runner --tls
+python main.py --collect
 ```
 
-**Enable multiple features with GUI:**
+**Train RL model:**
+```bash
+python main.py --rl
+```
+
+**Test trained RL model:**
+```bash
+python main.py --rltest
+```
+
+**Enable features with simulation:**
 ```bash
 python main.py --runner --bsm --tls --gui
-```
-
-**Test specific feature in isolation:**
-```bash
-python main.py --runner --bsm
-```
-
-**Test all features with manual control:**
-```bash
-python main.py --runner --test-all #(not to be used yest since not all features are implemented)
 ```

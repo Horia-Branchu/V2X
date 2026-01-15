@@ -43,7 +43,6 @@ Core concepts:
 - 🗺️ Realistic network: **Cluj-Napoca traffic model**
 - 📡 V2V communication (BSM-based proximity monitoring)
 - 🚦 **Dynamic traffic-light control** reacting to congestion
-- 🧭 Automatic **rerouting** when roads are blocked
 - 🧾 Logging of TLS states, reroutes, and safety events
 - 📊Post-simulation data analysis to compare standard driving vs. V2X-enhanced scenarios
 - ⚙️ Easily switch to your own city or scenario by configuring your own sumo network in the config directory
