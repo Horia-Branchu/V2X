@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 from runners.simulation_runner import SimulationRunner
 from environment.base_sumo_env import BaseSumoEnvironment
-from datacollector.data_collector import DataCollector, baseline_filename, v2x_filename, data_dir_name
+from datacollector.data_collector import DataCollector, baseline_filename, v2x_filename, rule_based_filename, data_dir_name
 from analysis import correlation_map, geo_emissions_plot, geo_plots, plots
 
 logger = logging.getLogger("v2x")
@@ -73,58 +73,84 @@ def run_once(config_path: str, steps: int | None, gui: bool,
     runner.start_simulation()
 
 def main():
-    #Extend argument parsing to include max points
     temp_parser = argparse.ArgumentParser(add_help=False)
     temp_parser.add_argument(
         "--max-points",
         type=int,
-        default=200000,
-        help="Maximum number of sampled points used in plotting"
+        default=20000000000 ,
+        help="Maximum number of sampled points used in plotting",
     )
+    temp_parser.add_argument(
+        "--force-baseline",
+        action="store_true",
+        help="Regenerate baseline parquet even if it already exists.",
+    )
+    temp_parser.add_argument(
+        "--force-rule-based",
+        action="store_true",
+        help="Regenerate rule-based parquet even if it already exists.",
+    )
+
     local_args, remained_argv = temp_parser.parse_known_args()
     max_points = local_args.max_points
+    force_baseline = local_args.force_baseline
+    force_rule = local_args.force_rule_based
+
     sys.argv = [sys.argv[0]] + remained_argv
     args = SimulationRunner.parse_arguments()
     cfg = resolve_config()
 
-    if not(args.bsm or args.tls or args.priority or args.reroute):
-         raise ValueError(f"\nNo v2x features enabled\n"
-         "At least one of --bsm --tls --priority --reroute must be true")
+    if not (args.bsm or args.tls or args.priority or args.reroute):
+        raise ValueError(
+            "\nNo v2x features enabled\n"
+            "At least one of --bsm --tls --priority --reroute must be true"
+        )
 
-    project_root = Path(__file__).resolve().parents[1]
+    project_root = Path(__file__).resolve().parents[2]
     data_dir = project_root / data_dir_name
     baseline_path = data_dir / baseline_filename
-    v2x_path = data_dir / v2x_filename
+    rule_path = data_dir / rule_based_filename
 
-    if baseline_path.exists():
-        raise ValueError(f"\nBaseline file exists.Delete {baseline_path} before rerunning")
-    if v2x_path.exists():
-        raise ValueError(f"\nV2X file exists.Delete {v2x_path} before rerunning")
+    if baseline_path.exists() and force_baseline:
+        baseline_path.unlink()
 
-    baseline_collector = DataCollector(output_filename=baseline_filename,reset_on_start=True)
-    run_once(
-        config_path=cfg,
-        steps=args.steps,
-        gui=args.gui,
-        bsm=False, tls=False, priority=False, reroute=False,
-        collector=baseline_collector
-    )
+    if not baseline_path.exists():
+        baseline_collector = DataCollector(
+            output_filename=baseline_filename,
+            reset_on_start=True,
+        )
+        run_once(
+            config_path=cfg,
+            steps=args.steps,
+            gui=args.gui,
+            bsm=False,
+            tls=False,
+            priority=False,
+            reroute=False,
+            collector=baseline_collector,
+        )
+    else:
+        print(f"Baseline exists, reusing: {baseline_path}")
 
-    params_collector = DataCollector(output_filename=v2x_filename,reset_on_start=True)
-    run_once(
-        config_path=cfg,
-        steps=args.steps,
-        gui=args.gui,
-        bsm=args.bsm, tls=args.tls, priority=args.priority, reroute=args.reroute,
-        collector=params_collector
-    )
+    if rule_path.exists() and force_rule:
+        rule_path.unlink()
 
-    print(f"\n\n\nGenerating Plots")
-    plots.main(max_points=max_points)
-    correlation_map.main()
-    geo_plots.main()
-    geo_emissions_plot.main()
-    print(f"All plots generated successfully")
-
+    if not rule_path.exists():
+        rule_collector = DataCollector(
+            output_filename=rule_based_filename,
+            reset_on_start=True,
+        )
+        run_once(
+            config_path=cfg,
+            steps=args.steps,
+            gui=args.gui,
+            bsm=args.bsm,
+            tls=args.tls,
+            priority=args.priority,
+            reroute=args.reroute,
+            collector=rule_collector,
+        )
+    else:
+        print(f"Rule-based exists, reusing: {rule_path}")
 if __name__ == "__main__":
     main()

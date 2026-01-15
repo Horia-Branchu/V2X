@@ -78,7 +78,7 @@ def build_env(config_path, *, gui, rl, tls, bsm, priority, reroute):
 def main():
     #Argument parsing to include max points
     temp_parser = argparse.ArgumentParser(add_help=False)
-    temp_parser.add_argument("--max-points", type=int, default=200000)
+    temp_parser.add_argument("--max-points", type=int, default=200000000000)
     local_args, remaining = temp_parser.parse_known_args()
     max_points = local_args.max_points
     sys.argv = [sys.argv[0]] + remaining
@@ -91,6 +91,8 @@ def main():
     parser.add_argument("--reroute", action="store_true", help="Run Reroute RL")
     parser.add_argument("--steps", type=int, default=None)
     parser.add_argument("--gui", action="store_true")
+    parser.add_argument("--force-baseline",action="store_true",help="Regenerate baseline parquet even if it already exists.",)
+    parser.add_argument("--force-rl",action="store_true",help="Regenerate RL parquet even if it already exists.",)
     args = parser.parse_args()
 
     #Enforce that at least one V2X feature is selected for RL
@@ -112,21 +114,42 @@ def main():
     feature_name = enabled_features[0]
 
     #Paths and output files
-    project_root = Path(__file__).resolve().parents[1]
+    project_root = Path(__file__).resolve().parents[2]
     data_dir = project_root / data_dir_name
     data_dir.mkdir(exist_ok=True)
 
     baseline_path = data_dir / baseline_filename
     rl_path = data_dir / rl_filename
 
-    if baseline_path.exists():
-        raise ValueError(f"Baseline file exists. Delete {baseline_path} first.")
+    if baseline_path.exists() and args.force_baseline:
+        baseline_path.unlink()
+
+    if rl_path.exists() and args.force_rl:
+        rl_path.unlink()
+
     if rl_path.exists():
-        raise ValueError(f"RL file exists. Delete {rl_path} first.")
+        raise ValueError(f"RL file exists. Use --force-rl or delete {rl_path} first.")
 
     cfg = resolve_config()
 
-    logger.info("Running BASELINE simulation")
+    if not baseline_path.exists():
+        logger.info("Running BASELINE simulation")
+
+        baseline_env = build_env(cfg, gui=args.gui, rl=False, tls=False, bsm=False, priority=False, reroute=False)
+        baseline_collector = DataCollector(
+            output_filename=baseline_filename,
+            reset_on_start=True,
+        )
+
+        baseline_runner = RunnerWithCollector(
+            cfg,
+            sumo_env=baseline_env,
+            steps=args.steps,
+            collector=baseline_collector,
+        )
+        baseline_runner.start_simulation()
+    else:
+        logger.info(f"Baseline exists, reusing: {baseline_path}")
 
     #Baseline run with no V2X or RL features enabled
     baseline_env = build_env(cfg, gui=args.gui, rl=False, tls=False, bsm=False, priority=False, reroute=False)
