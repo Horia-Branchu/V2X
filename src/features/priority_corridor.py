@@ -85,15 +85,16 @@ class PriorityCorridorFeature(BaseV2XFeature):
         other_queue = self._get_other_queue_length()
 
         obs = np.array([
-            prio_count,
-            avg_wait,
-            min_dist,
-            phase,
-            prio_queue,
-            other_queue
+            prio_count / 10.0,
+            avg_wait / 300.0,
+            min_dist / self.max_distance,
+            phase / 10.0,
+            prio_queue / 50.0,
+            other_queue / 50.0
         ], dtype=np.float32)
 
-        return obs
+        # Clip just in case values exceed limits
+        return np.clip(obs, 0.0, 1.0)
 
     def calculate_reward(self):
         if not self.rl_mode:
@@ -106,8 +107,10 @@ class PriorityCorridorFeature(BaseV2XFeature):
         if cleared_vehicles > 0:
             reward += cleared_vehicles * 10.0
 
+        # Penalty for each priority vehicle that is stopped (per step)
         for v in prio_vehicles:
-            reward -= 0.5 * traci.vehicle.getWaitingTime(v)
+            if traci.vehicle.getSpeed(v) < 0.1:
+                reward -= 0.5
 
         reward -= 0.05 * self._get_total_queue_length()
 
@@ -246,7 +249,11 @@ class PriorityCorridorFeature(BaseV2XFeature):
                 # Cast numpy types to int if needed
                 if hasattr(action, 'item'):
                      # if it's a 0-d array or scalar
-                    act = int(action.item())
+                    if getattr(action, 'size', 1) == 1:
+                        act = int(action.item())
+                    else:
+                         # fallback for 1D arrays
+                        act = int(action[0])
                 else:
                     act = int(action)
 
@@ -498,8 +505,16 @@ class PriorityCorridorFeature(BaseV2XFeature):
         return traci.vehicle.getIDCount() - self._get_priority_queue_length()
 
     def _get_total_queue_length(self):
-        lanes = traci.lane.getIDList()
-        return sum(traci.lane.getLastStepHaltingNumber(l) for l in lanes)
+        if self.tls_id:
+            try:
+                lanes = traci.trafficlight.getControlledLanes(self.tls_id)
+                # Use set to avoid double counting lanes with multiple connections
+                lanes = set(lanes)
+                return sum(traci.lane.getLastStepHaltingNumber(l) for l in lanes)
+            except Exception as e:
+                logger.debug(f"[{self.feature_name}] Error getting controlled lanes: {e}")
+                return 0
+        return 0
 
     def get_feature_name(self):
         return self.feature_name
