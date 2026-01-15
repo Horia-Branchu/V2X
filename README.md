@@ -21,7 +21,7 @@ Core concepts:
 
 - Vehicles exchange **Basic Safety Messages (BSM)**.  
 - **Traffic lights** adjust dynamically based on live traffic density and queue data.  
-- Incidents, blocked roads or high congestions automatically trigger **rerouting** behaviors.
+- Prioritise and make way for emergency vehicles to minimise response time
 
 ---
 
