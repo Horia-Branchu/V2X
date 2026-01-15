@@ -1554,6 +1554,32 @@ def __init__(self, config_path, sumo_env, steps, **kwargs)
    - No features: Run standard simulation
 6. Executes the chosen simulation mode
 
+# config/ directory
+
+**What it contains:**
+- simulation.sumocfg: The sumo config files here you tell sumo what files to use when running your simulation, in order to run the simulation use: 
+```bash
+sumo-gui simulation.sumocfg
+```
+
+- cluj_network.net.xml.gz: This is where edges (streets) are defined along with their properties (like allow only buses, colors etc.). You usually don't ever need to edit this.
+
+- cluj_polygons.poly.xml.gz: This is where polygons are defined along with their properties. (Like trees, buildings, etc). You usually don't ever need to edit this.
+
+- cluj_initial_settings.view.xml: Defines starting conditions for the simulation like camera position and starting time.
+
+- vType.add.xml: Here you can define vTypes (vehicle templates).
+
+- cluj_traffic.passenger.trips.xml/cluj_traffic.passenger2.trips.xml/cluj_traffic.emergency.trips.xml: This is where trips(vehicles) are defined.
+
+- edge_weights.src.xml: This is where you give weights to edges for the trips generation phase, higher weight = higher chance of trips generating with that edge as a starting point.
+
+- edge_weights_bak.src.xml: Backup/Fallback of the edge weights file.
+
+- time_to_run.txt: Small text file containing simulation duration times, useful for computing RL training time.
+
+- generate_all_vehicles_scripts.sh: Bash script to generate all vehicle trips using SUMO's randomTrips.py also taking edge weights into consideration.
+
 # Main
 
 Entry point for the V2X simulation framework. Provides a command-line interface to launch different simulation runners.
