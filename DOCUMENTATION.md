@@ -16,7 +16,7 @@ V2X/
 │   ├── data/  
 │   │   └── vehicles.csv  
 │   ├── datacollector/  
-│   │   └── data_collector.py  
+│   │   └── [data_collector.py](#data-collector)  
 │   ├── environment/  
 │   │   └── [base_sumo_env.py](#base-sumo-environment)  
 │   ├── features/  
@@ -174,6 +174,46 @@ Initializes the traffic simulation environment.
 **Output:** `None`
 
 **What it does:**: It tries to close the Traci Module and if there is any GUI opened, it terminates the process based on the current OS running.
+
+# Data Collector
+This module acts as a high-quality monitoring system that records how vehicles move and perform. It provides the necessary data to analyze and improve traffic efficiency after the simulation ends.
+### Constructor
+Initializes the data collection and creates the storage folder.
+
+**Input:**
+- `output_filename`: Name of the file to save.
+- `reset_on_start`: If true, deletes old files.
+
+**What it does:** It creates a folder called `data` and prepares to track how cars move, stop, and wait.
+
+### collect
+Captures details for every car at the current time.
+
+**Input:**
+- `time`: Current simulation second.
+
+**What it does:** Every second, it looks at all cars and saves these details:
+* **time**: Current simulation second.
+* **veh_id**: Car's unique name.
+* **edge**: Current road name.
+* **speed**: How fast moving.
+* **accel**: Speeding up or down.
+* **co2**: Pollution gas amount.
+* **jerk**: Driving smoothness level.
+* **stops**: Total full stops.
+* **time_loss**: Lost travel time.
+* **queue_time**: Time stuck waiting.
+
+### flush
+Persists buffered data to disk.
+
+**Input:**
+* `None`
+
+**Output:**
+* `None`
+
+**What it does:** Converts the memory buffer into a Pandas DataFrame and saves it as a Parquet file to the output directory before clearing the buffer
 
 # Base V2X Feature
 
