@@ -7,7 +7,7 @@ import sumolib
 import logging
 import numpy as np
 
-from datacollector.data_collector import baseline_filename, v2x_filename, data_dir_name, rl_filename
+from datacollector.data_collector import baseline_filename, v2x_filename, data_dir_name, rl_filename, rule_based_filename
 from pathlib import Path
 
 logger = logging.getLogger("v2x")
@@ -180,8 +180,9 @@ def main():
     data_dir = project_root / data_dir_name
 
     baseline_path = data_dir / baseline_filename
-    v2x_path = data_dir / v2x_filename
+    rule_path = data_dir / rule_based_filename
     rl_path = data_dir / rl_filename
+    legacy_v2x_path = data_dir / v2x_filename
 
     sumo_cfg_path = project_root / "config" / "simulation.sumocfg"
     if not sumo_cfg_path.exists():
@@ -191,35 +192,43 @@ def main():
     print(f"Reading parquet files from: {data_dir}")
 
     if not baseline_path.exists():
-        raise FileNotFoundError(f"Missing baseline parquet.")
+        raise FileNotFoundError("Missing baseline parquet.")
 
-    if v2x_path.exists() and rl_path.exists():
-        raise FileNotFoundError(f"Both V2X and RL files exists.\nPlease make sure to have just one")
+    # Choose which comparisons exist
+    comparisons = []
 
-    if not v2x_path.exists() and not rl_path.exists():
-        raise FileNotFoundError(f"No V2X or RL parquet file found")
+    if rule_path.exists():
+        comparisons.append(("Rule-based", rule_path))
+    elif legacy_v2x_path.exists():
+        comparisons.append(("Rule-based", legacy_v2x_path))
 
-    comparison_path = v2x_path if v2x_path.exists() else rl_path
-    comparison_label = "V2X" if v2x_path.exists() else "RL"
+    if rl_path.exists():
+        comparisons.append(("RL", rl_path))
+
+    if not comparisons:
+        raise FileNotFoundError("No rule-based or RL parquet file found.")
 
     df_base = pd.read_parquet(baseline_path)
-    df_v2x = pd.read_parquet(comparison_path)
 
     net_path = _find_net_path_from_sumocfg(sumo_cfg_path)
     net = sumolib.net.readNet(str(net_path))
     edge_lengths = {e.getID(): e.getLength() for e in net.getEdges()}
 
-    df_pollution = compute_edge_pollution_co2(df_base, df_v2x, edge_lengths)
+    for label, cmp_path in comparisons:
+        df_cmp = pd.read_parquet(cmp_path)
 
-    out_path = data_dir / f"co2_pollution_baseline_vs_{comparison_label}.png"
-    plot_co2_pollution_map(
-        df_pollution=df_pollution,
-        sumo_config=sumo_cfg_path,
-        out_path=out_path,
-        title=f"Pollution map after {comparison_label}"
-    )
+        df_pollution = compute_edge_pollution_co2(df_base, df_cmp, edge_lengths)
 
-    print(f"CO2 pollution geographic plot finished.")
+        out_path = data_dir / f"co2_pollution_baseline_vs_{label}.png"
+        plot_co2_pollution_map(
+            df_pollution=df_pollution,
+            sumo_config=sumo_cfg_path,
+            out_path=out_path,
+            title=f"Pollution map after {label}"
+        )
+
+    print("CO2 pollution geographic plots finished.")
+
 
 
 if __name__ == "__main__":

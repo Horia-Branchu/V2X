@@ -6,7 +6,7 @@ import pandas as pd
 import sumolib
 import logging
 
-from datacollector.data_collector import baseline_filename, v2x_filename, data_dir_name, rl_filename
+from datacollector.data_collector import baseline_filename, v2x_filename, data_dir_name, rl_filename, rule_based_filename
 from pathlib import Path
 
 logger = logging.getLogger("v2x")
@@ -193,29 +193,25 @@ def generate_geo_plot(parquet_path: Path, sumo_cfg_path: Path, output_name: str)
     )
 
 
-def compare_geo_plots(data_dir: Path, comparison_label: str):
-    """Create a side-by-side comparison image of baseline vs V2X."""
+def compare_geo_plots(data_dir: Path, comparison_label: str, comparison_img_name: str, left_img_name: str = "min_speed_baseline.png", left_label: str = "Baseline"):
+    baseline_img = data_dir / left_img_name
+    comparison_img = data_dir / comparison_img_name
+
+    """Create a side-by-side comparison image of baseline vs a specific run."""
     import matplotlib.image as mpimg
 
-    baseline_img = data_dir / "min_speed_baseline.png"
-    comparison_img = data_dir / f"min_speed_{comparison_label}.png"
-
     if not baseline_img.exists() or not comparison_img.exists():
-        print("Skipping comparison: one of the images does not exist.")
+        print(f"Skipping comparison {comparison_label}: one of the images does not exist.")
         return
 
     img_base = mpimg.imread(baseline_img)
-    img_v2x = mpimg.imread(comparison_img)
+    img_cmp = mpimg.imread(comparison_img)
 
     fig, axes = plt.subplots(1, 2, figsize=(18, 9))
+    axes[0].imshow(img_base); axes[0].axis("off"); axes[0].set_title(left_label)
+    axes[1].imshow(img_cmp); axes[1].axis("off"); axes[1].set_title(comparison_label)
 
-    axes[0].imshow(img_base)
-    axes[0].axis("off")
-
-    axes[1].imshow(img_v2x)
-    axes[1].axis("off")
-
-    out_path = data_dir / "min_speed_comparison.png"
+    out_path = data_dir / f"min_speed_comparison_baseline_vs_{comparison_label}.png"
     plt.tight_layout()
     plt.savefig(out_path, dpi=180)
     plt.close()
@@ -223,13 +219,15 @@ def compare_geo_plots(data_dir: Path, comparison_label: str):
     print(f"Saved side-by-side comparison: {out_path}")
 
 
+
 def main():
     project_root = Path(__file__).resolve().parents[2]
     data_dir = project_root / data_dir_name
 
     baseline_path = data_dir / baseline_filename
-    v2x_path = data_dir / v2x_filename
+    rule_path = data_dir / rule_based_filename
     rl_path = data_dir / rl_filename
+    legacy_v2x_path = data_dir / v2x_filename
 
     sumo_cfg_path = project_root / "config" / "simulation.sumocfg"
     if not sumo_cfg_path.exists():
@@ -241,26 +239,47 @@ def main():
     if not baseline_path.exists():
         raise FileNotFoundError(f"No {baseline_filename} file found")
 
-    if v2x_path.exists() and rl_path.exists():
-        raise FileNotFoundError(f"Both V2X and RL files exists.\nPlease make sure to have just one")
+    # Determine which comparison datasets exist
+    comparisons = []
 
-    if not v2x_path.exists() and not rl_path.exists():
-        raise FileNotFoundError(f"No V2X or RL parquet file found")
+    # Rule-based: prefer rule_based_filename; fallback legacy v2x
+    if rule_path.exists():
+        comparisons.append(("Rule-based", rule_path, "min_speed_rule_based.png"))
+    elif legacy_v2x_path.exists():
+        comparisons.append(("Rule-based", legacy_v2x_path, "min_speed_rule_based.png"))
 
-    comparison_path = v2x_path if v2x_path.exists() else rl_path
-    comparison_label = "V2X" if v2x_path.exists() else "RL"
+    if rl_path.exists():
+        comparisons.append(("RL", rl_path, "min_speed_rl.png"))
 
-    print(f"Generating geographic plot for baseline run")
+    if not comparisons:
+        raise FileNotFoundError("No rule-based or RL parquet file found for geo plots.")
+
+    print("Generating geographic plot for baseline run")
     generate_geo_plot(baseline_path, sumo_cfg_path, "min_speed_baseline.png")
-    print(f"Generation geographic plot for comparison label")
-    generate_geo_plot(comparison_path, sumo_cfg_path, f"min_speed_{comparison_label}.png")
 
-    try:
-        compare_geo_plots(data_dir,comparison_label)
-    except Exception as e:
-            print(f"Failed to generate comparison image: {e}")
+    for label, parquet_path, img_name in comparisons:
+        print(f"Generating geographic plot for: {label}")
+        generate_geo_plot(parquet_path, sumo_cfg_path, img_name)
 
-    print(f"All geo plots finished.")
+    # comparisons happen AFTER all images exist
+    compare_geo_plots(
+        data_dir,
+        "Rule-based",
+        "min_speed_rule_based.png",
+        left_img_name="min_speed_baseline.png",
+        left_label="Baseline"
+    )
+
+    if rl_path.exists():
+        compare_geo_plots(
+            data_dir,
+            "RL",
+            "min_speed_rl.png",
+            left_img_name="min_speed_rule_based.png",
+            left_label = "Rule-based"
+        )
+
+    print("All geo plots finished.")
 
 
 if __name__ == "__main__":
