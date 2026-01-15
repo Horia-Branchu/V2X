@@ -26,7 +26,7 @@ V2X/
 │   │   └── [priority_corridor.py](#priority-corridor-feature)  
 │   ├── runners/  
 │   │   ├── [collector_runner.py](#collector-runner)  
-│   │   ├── rl_collector_runner.py  
+│   │   ├── [rl_collector_runner.py](#rl-collector-runner)  
 │   │   ├── [rl_tester.py](#rl_tester)  
 │   │   ├── [rl_trainee.py](#rl_trainee)  
 │   │   └── [simulation_runner.py](#simulation-runner-class)  
@@ -727,7 +727,7 @@ The central entry point of the script that manages the comparative simulation wo
 * **Rule-Based Phase**: It runs a V2X simulation (requested features ON) and saves it to `vehicle_state_rule_based.parquet`.
 * It manages file I/O by checking for existing data to avoid redundant simulations unless "force" flags are used.
 
-# RL Runner With Collector
+# RL Collector Runner
 ### Constructor
 Initializes the RL-specific runner with a collector and a trained model.
 
