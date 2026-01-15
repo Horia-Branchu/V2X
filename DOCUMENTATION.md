@@ -657,7 +657,7 @@ Aggregates the per-step yield events:
 
 **Output:** `int`: Total number of halting vehicles across all lanes controlled by the traffic light.
 
-### get_feature_name
+### get_feature_name()
 Provides the human-readable name of the feature for logging.
 **What it does:**
 Implements the priority corridor behavior each simulation step:
