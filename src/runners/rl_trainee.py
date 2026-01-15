@@ -4,7 +4,7 @@ import datetime
 os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 
 from stable_baselines3 import PPO
-from stable_baselines3.common.callbacks import BaseCallback
+from stable_baselines3.common.callbacks import BaseCallback, CheckpointCallback, CallbackList
 from environment.base_sumo_env import BaseSumoEnvironment
 
 class StopAtTimeCallback(BaseCallback):
@@ -39,7 +39,7 @@ def main(args, sumo_config="config/simulation.sumocfg"):
     # create environment with ONLY feature selected by dev
     env = BaseSumoEnvironment(
         sumo_config,
-        gui=False,
+        gui=args.gui,
         tls=args.tls,
         bsm=args.bsm,
         priority=args.priority,
@@ -48,10 +48,8 @@ def main(args, sumo_config="config/simulation.sumocfg"):
     )
 
     start_time = datetime.datetime.now()
-    # Let's set a duration based instead of fixed date, or just a far future date
-    stop_time = start_time + datetime.timedelta(hours=24) # Run for 24 hours max
-    # or just fix the date to future
-    stop_time = datetime.datetime(2026, 12, 12, 21, 0)
+    # Set duration to 10 hours
+    stop_time = start_time + datetime.timedelta(hours=10)
 
     callback = StopAtTimeCallback(stop_time)
 
@@ -68,7 +66,17 @@ def main(args, sumo_config="config/simulation.sumocfg"):
 
     print(f"Training {feature_name} feature...")
 
-    model.learn(total_timesteps=10_000_000_000, callback=callback)
+    # Save a checkpoint every 100,000 steps (~1 hour at 28 fps)
+    checkpoint_callback = CheckpointCallback(
+        save_freq=100_000,
+        save_path="./logs/",
+        name_prefix=f"{feature_name}_model"
+    )
+
+    # Combine callbacks
+    callback_list = CallbackList([callback, checkpoint_callback])
+
+    model.learn(total_timesteps=10_000_000_000, callback=callback_list)
     model.save(f"{feature_name}_feature_model")
 
     # test the trained feature
@@ -90,5 +98,6 @@ if __name__ == "__main__":
     parser.add_argument("--tls",  action="store_true", help="Run simulation_runner", default=False)
     parser.add_argument("--bsm", action="store_true", help="Run data_collector", default=False)
     parser.add_argument("--priority", action="store_true", help="Run priority RL", default=False)
+    parser.add_argument("--gui", action="store_true", help="Run with GUI", default=False)
 
     main(args=parser.parse_args())
