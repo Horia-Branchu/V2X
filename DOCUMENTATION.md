@@ -1,32 +1,44 @@
 # Documentation
 
 ## Project Structure
-├── data <br>
-├── config <br>
-│   ├── network.net.xml <br>
-│   ├── routes.rou.xml <br>
-│   └── simulation.sumocfg <br>
-├── src <br>
-│   ├── agents <br>
-│   │   └── [ppo.py](#ppo)<br>
-│   ├── [base_sumo_env.py](#base-sumo-environment) <br>
-│   ├── [base_v2x_feature.py](#base-v2x-feature) <br>
-│   ├── [dynamic_tls.py](#dynamic-tls) <br>
-│   ├── [priority_corridor.py](#priority-corridor-feature) <br>
-│   ├── [terminal_display.py](#terminal-display) <br>
-│   └── [simulation_runner.py](#simulation-runner-class) <br>
+
+V2X/  
+├── config/ <br>
+│   ├── simulation.sumocfg <br>
+│   ├── generate_all_vehicles_scripts.py <br>
+│   ├── time_to_run.txt <br>
+├── src/ <br>
+│   ├── analysis/ - Data analysis scripts  
+│   │   ├── correlation_map.py  
+│   │   ├── geo_emissions_plot.py  
+│   │   ├── geo_plots.py  
+│   │   └── plots.py  
+│   ├── data/  
+│   │   └── vehicles.csv  
+│   ├── datacollector/  
+│   │   └── data_collector.py  
+│   ├── environment/  
+│   │   └── [base_sumo_env.py](#base-sumo-environment)  
+│   ├── features/  
+│   │   ├── [base_v2x_feature.py](#base-v2x-feature)  
+│   │   ├── bsm_feature.py  
+│   │   ├── [dynamic_tls.py](#dynamic-tls)  
+│   │   └── [priority_corridor.py](#priority-corridor-feature)  
+│   ├── runners/  
+│   │   ├── collector_runner.py  
+│   │   ├── rl_collector_runner.py  
+│   │   ├── rl_tester.py  
+│   │   ├── rl_trainee.py  
+│   │   └── [simulation_runner.py](#simulation-runner-class)  
+│   └── ui/ <br>
+│       ├── progress_bar.py  
+│       └── [terminal_display.py](#terminal-display)  
+├── main.py <br>
+├── [DOCUMENTATION.md](#Documentation)  
 
 
-## Modules
 
-# PPO
-This script creates a SUMO environment, validates it against Gymnasium
-standards, initializes a PPO model with specific hyperparameters (learning
-rate: 0.0003, n_steps: 2048, batch_size: 64, n_epochs: 10), trains the model
-for 100,000 timesteps, saves the trained model to disk, then tests it by
-running 1000 simulation steps with deterministic actions while automatically
-handling episode resets.
-
+# Modules
 
 # Base Sumo Environment
 ### Constructor
@@ -808,7 +820,41 @@ Entry point for the V2X simulation framework. Provides a command-line interface 
 - `--rl` → `runners.rl_trainee`
 - `--rltest` → `runners.rl_tester`
 
-## Usage Examples
+<br>
+<br>
+<br>
+
+
+
+# Main
+
+Entry point for the V2X simulation framework. Provides a command-line interface to launch different simulation runners.
+
+### main()
+
+**Input:** `None` (reads from command-line arguments)
+
+**Output:** `None`
+
+**What it does:**
+1. Creates an argument parser with mutually exclusive group for runner selection
+2. Defines four available commands:
+   - `--runner`: Launch the simulation runner
+   - `--collect`: Launch the data collector runner
+   - `--rl`: Launch the RL training module (rl_trainee)
+   - `--rltest`: Launch the RL testing module (rl_tester)
+3. Parses the arguments and validates that one command is selected
+4. Maps the selected command to its corresponding module path
+5. Adds the `src/` directory to the Python path
+6. Uses `runpy.run_module()` to execute the selected module, passing through any remaining arguments
+
+**Command Mapping:**
+- `--runner` → `runners.simulation_runner`
+- `--collect` → `runners.collector_runner`
+- `--rl` → `runners.rl_trainee`
+- `--rltest` → `runners.rl_tester`
+
+# Usage and Examples
 
 **Run simulation with specified steps:**
 ```bash
