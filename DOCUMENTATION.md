@@ -25,7 +25,7 @@ V2X/
 │   │   ├── [dynamic_tls.py](#dynamic-tls)  
 │   │   └── [priority_corridor.py](#priority-corridor-feature)  
 │   ├── runners/  
-│   │   ├── collector_runner.py  
+│   │   ├── [collector_runner.py](#collector-runner)  
 │   │   ├── rl_collector_runner.py  
 │   │   ├── [rl_tester.py](#rl_tester)  
 │   │   ├── [rl_trainee.py](#rl_trainee)  
@@ -39,6 +39,45 @@ V2X/
 
 
 # Modules
+
+# Data Collector
+### Constructor
+Initializes the data collection and creates the storage folder.
+
+**Input:**
+- `output_filename`: Name of the file to save.
+- `reset_on_start`: If true, deletes old files.
+
+**What it does:** It creates a folder called `data` and prepares to track how cars move, stop, and wait.
+
+### collect
+Captures details for every car at the current time.
+
+**Input:**
+- `time`: Current simulation second.
+
+**What it does:** Every second, it looks at all cars and saves these details:
+* **time**: Current simulation second.
+* **veh_id**: Car's unique name.
+* **edge**: Current road name.
+* **speed**: How fast moving.
+* **accel**: Speeding up or down.
+* **co2**: Pollution gas amount.
+* **jerk**: Driving smoothness level.
+* **stops**: Total full stops.
+* **time_loss**: Lost travel time.
+* **queue_time**: Time stuck waiting.
+
+### flush
+Persists buffered data to disk.
+
+**Input:**
+* `None`
+
+**Output:**
+* `None`
+
+**What it does:** Converts the memory buffer into a Pandas DataFrame and saves it as a Parquet file to the output directory before clearing the buffer
 
 # Base Sumo Environment
 ### Constructor
@@ -174,46 +213,6 @@ Initializes the traffic simulation environment.
 **Output:** `None`
 
 **What it does:**: It tries to close the Traci Module and if there is any GUI opened, it terminates the process based on the current OS running.
-
-# Data Collector
-This module acts as a high-quality monitoring system that records how vehicles move and perform. It provides the necessary data to analyze and improve traffic efficiency after the simulation ends.
-### Constructor
-Initializes the data collection and creates the storage folder.
-
-**Input:**
-- `output_filename`: Name of the file to save.
-- `reset_on_start`: If true, deletes old files.
-
-**What it does:** It creates a folder called `data` and prepares to track how cars move, stop, and wait.
-
-### collect
-Captures details for every car at the current time.
-
-**Input:**
-- `time`: Current simulation second.
-
-**What it does:** Every second, it looks at all cars and saves these details:
-* **time**: Current simulation second.
-* **veh_id**: Car's unique name.
-* **edge**: Current road name.
-* **speed**: How fast moving.
-* **accel**: Speeding up or down.
-* **co2**: Pollution gas amount.
-* **jerk**: Driving smoothness level.
-* **stops**: Total full stops.
-* **time_loss**: Lost travel time.
-* **queue_time**: Time stuck waiting.
-
-### flush
-Persists buffered data to disk.
-
-**Input:**
-* `None`
-
-**Output:**
-* `None`
-
-**What it does:** Converts the memory buffer into a Pandas DataFrame and saves it as a Parquet file to the output directory before clearing the buffer
 
 # Base V2X Feature
 
@@ -647,6 +646,86 @@ Implements the priority corridor behavior each simulation step:
    - If `traci.vehicle.couldChangeLane` allows it, performs a short `changeLane` into a safe adjacent lane, increments the total yield counter, and records a verbose + short log entry.
 4. Respects `MAX_BULK_COMMANDS_PER_STEP` to avoid flooding TraCI.
 5. Calls `_log_priority_events()` once at the end of the step.
+
+# Collector Runner
+### Constructor
+Initializes the runner with the required data collection instance.
+
+**Input:**
+* **collector** (`DataCollector`): The specific instance used to record and save vehicle metrics.
+* ***args / \*\*kwargs**: Standard parameters passed to the parent `SimulationRunner`.
+
+**Output:** `None` (initializes object state).
+
+**What it does:** It sets up the simulation runner and attaches a dedicated collector to monitor the environment during execution.
+
+### run_until_end
+Executes the simulation until all trips are completed while recording data at every step.
+
+**Input:** `None`.
+
+**Output:** `None`.
+
+**What it does:**
+* It triggers the first environment step to initialize movement.
+* It captures the current simulation time and vehicle count.
+* It enters a loop that continues as long as vehicles are present or expected in the network.
+* At every step, it calls `collector.collect(current_time)` to gather vehicle data.
+* Upon completion or error, it calls `collector.flush()` to save all buffered data to the disk.
+
+### run_with_steps
+Runs the simulation for a predefined number of steps for controlled data sampling.
+
+**Input:** `None`.
+
+**Output:** `None`.
+
+**What it does:**
+* It iterates for exactly the duration defined in `simulation_steps`.
+* It records vehicle performance metrics at every single step.
+* It saves all accumulated data to a file using `collector.flush()` once the loop finishes.
+
+### resolve_config
+A utility function that automatically locates the SUMO configuration file within the project structure.
+
+**Input:**
+* **None**: It uses the current file's location to determine the path.
+
+**Output:**
+* **str**: The absolute path to the `simulation.sumocfg` file.
+
+**What it does:**
+* It calculates the path relative to the script's directory, looking specifically in the `../../config/` folder.
+* It verifies if the configuration file exists.
+* It raises a `FileNotFoundError` if the configuration is missing, prompting the user to provide a path or fix the directory structure.
+
+### build_env
+A utility function to create a consistent simulation environment.
+
+**Input:**
+* **config_path** (`str`): The path to the SUMO configuration file.
+* **gui** (`bool`): Flag to enable or disable the graphical interface.
+* **bsm, tls, priority, reroute** (`bool`): Flags to enable specific V2X features.
+
+**Output:** `BaseSumoEnvironment`.
+
+**What it does:** It returns an instance of `BaseSumoEnvironment` configured with the selected features for use in a simulation run.
+
+### main()
+The central entry point of the script that manages the comparative simulation workflow.
+
+**Input:**
+* **None**: Parses command-line arguments using `argparse`.
+
+**Output:**
+* **None**: Orchestrates the baseline and rule-based simulation runs.
+
+**What it does:**
+* It parses flags for plotting limits (`--max-points`) and forced data regeneration (`--force-baseline`, `--force-rule-based`).
+* It ensures at least one V2X feature is enabled before starting.
+* **Baseline Phase**: It runs a standard simulation (all features OFF) and saves it to `vehicle_state_baseline.parquet`.
+* **Rule-Based Phase**: It runs a V2X simulation (requested features ON) and saves it to `vehicle_state_rule_based.parquet`.
+* It manages file I/O by checking for existing data to avoid redundant simulations unless "force" flags are used.
 
 # Terminal Display
 
