@@ -727,6 +727,94 @@ The central entry point of the script that manages the comparative simulation wo
 * **Rule-Based Phase**: It runs a V2X simulation (requested features ON) and saves it to `vehicle_state_rule_based.parquet`.
 * It manages file I/O by checking for existing data to avoid redundant simulations unless "force" flags are used.
 
+# RL Runner With Collector
+### Constructor
+Initializes the RL-specific runner with a collector and a trained model.
+
+**Input:**
+* **collector** (`DataCollector`): The instance used to record vehicle state data.
+* **model** (`PPO`): A trained Stable-Baselines3 PPO model used to predict actions.
+* ***args / \*\*kwargs**: Arguments passed to the base `SimulationRunner`.
+
+**Output:** `None` (initializes object state).
+
+**What it does:** It sets up the execution environment to use an AI model for decision-making instead of random or fixed rules.
+
+---
+
+### resolve_config
+A utility function that locates the SUMO configuration file within the project structure.
+
+**Input:**
+* **None**: It uses the script's current directory to find the path.
+
+**Output:**
+* **str**: The absolute path to the `simulation.sumocfg` file.
+
+**What it does:** * It resolves the path to the `config/` directory relative to the script's parent folder.
+* It verifies the existence of the configuration file and raises a `FileNotFoundError` if the file is missing.
+
+---
+
+### run_until_end
+Executes the RL-controlled simulation until the scenario ends naturally.
+
+**Input:** `None`.
+
+**Output:** `None`.
+
+**What it does:**
+* It resets the environment to obtain the initial observation.
+* It enters a loop where the **model predicts the best action** based on current traffic.
+* It steps the environment with the predicted action and collects data at every timestamp.
+* It stops when the simulation is `terminated` or `truncated` and then calls `collector.flush()` to save the RL results.
+
+---
+
+### run_with_steps
+Runs the RL-controlled simulation for a fixed number of steps.
+
+**Input:** `None`.
+
+**Output:** `None`.
+
+**What it does:**
+* It resets the environment and starts a loop for the duration of `simulation_steps`.
+* The AI model controls simulation features at every step.
+* It records all metrics to the collector and saves them to a Parquet file at the end of the step count.
+
+---
+
+### build_env (Helper)
+A utility function to create the RL-specific environment.
+
+**Input:**
+* **config_path** (`str`): Path to the SUMO config.
+* **rl** (`bool`): Must be `True` to enable RL observation/action spaces.
+* **tls, bsm, priority, reroute** (`bool`): Flags to enable the specific feature being tested.
+
+**Output:** `BaseSumoEnvironment`.
+
+**What it does:** It returns an environment instance configured specifically for AI interaction, ensuring the observation and action spaces match the model's requirements.
+
+---
+
+### main()
+The main orchestration logic for comparing Baseline traffic vs. Reinforcement Learning performance.
+
+**Input:** `None` (reads CLI arguments).
+
+**Output:** `None`.
+
+**What it does:**
+* **Feature Validation**: Ensures exactly one V2X feature is selected for RL testing.
+* **Baseline Run**: If missing, it runs a standard simulation with no V2X features to create a "control group" dataset.
+* **RL Run**: 
+    1. Loads the corresponding pre-trained model (e.g., `tls_feature_model.zip`).
+    2. Runs the simulation under AI control.
+    3. Saves the data to `vehicle_state_rl.parquet`.
+* **Post-Simulation Analysis**: After both simulations (Baseline and RL) are done, it automatically triggers analysis scripts to generate maps and emission plots.
+
 # Terminal Display
 
 ### Constructor
