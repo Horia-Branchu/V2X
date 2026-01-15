@@ -33,7 +33,7 @@ V2X/
 │   └── ui/ <br>
 │       ├── [progress_bar.py](#progress-bar)  
 │       └── [terminal_display.py](#terminal-display)  
-├── main.py <br>
+├── [main.py](#main) <br>
 ├── [DOCUMENTATION.md](#Documentation)  
 
 
@@ -874,34 +874,62 @@ def __init__(self, config_path, sumo_env, steps, **kwargs)
    - Multiple features: Run manual feature test mode
    - No features: Run standard simulation
 6. Executes the chosen simulation mode
-<br>
-<br>
-<br>
 
+# Main
+
+Entry point for the V2X simulation framework. Provides a command-line interface to launch different simulation runners.
+
+### main()
+
+**Input:** `None` (reads from command-line arguments)
+
+**Output:** `None`
+
+**What it does:**
+1. Creates an argument parser with mutually exclusive group for runner selection
+2. Defines four available commands:
+   - `--runner`: Launch the simulation runner
+   - `--collect`: Launch the data collector runner
+   - `--rl`: Launch the RL training module (rl_trainee)
+   - `--rltest`: Launch the RL testing module (rl_tester)
+3. Parses the arguments and validates that one command is selected
+4. Maps the selected command to its corresponding module path
+5. Adds the `src/` directory to the Python path
+6. Uses `runpy.run_module()` to execute the selected module, passing through any remaining arguments
+
+**Command Mapping:**
+- `--runner` → `runners.simulation_runner`
+- `--collect` → `runners.collector_runner`
+- `--rl` → `runners.rl_trainee`
+- `--rltest` → `runners.rl_tester`
+
+<br>
+<br>
+<br>
 
 # Usage and Examples
 
-**Run simulation without features for specified steps:**
+**Run simulation with specified steps:**
 ```bash
 python main.py --runner --steps 100
 ```
 
-**Run simulation until vehicles are depleted with TLS enabled:**
+**Run data collection:**
 ```bash
-python main.py --runner --tls
+python main.py --collect
 ```
 
-**Enable multiple features with GUI:**
+**Train RL model:**
+```bash
+python main.py --rl
+```
+
+**Test trained RL model:**
+```bash
+python main.py --rltest
+```
+
+**Enable features with simulation:**
 ```bash
 python main.py --runner --bsm --tls --gui
-```
-
-**Test specific feature in isolation:**
-```bash
-python main.py --runner --bsm
-```
-
-**Test all features with manual control:**
-```bash
-python main.py --runner --test-all #(not to be used yest since not all features are implemented)
 ```
