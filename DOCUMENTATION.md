@@ -31,7 +31,7 @@ V2X/
 │   │   ├── rl_trainee.py  
 │   │   └── [simulation_runner.py](#simulation-runner-class)  
 │   └── ui/ <br>
-│       ├── progress_bar.py  
+│       ├── [progress_bar.py](#progress-bar)  
 │       └── [terminal_display.py](#terminal-display)  
 ├── main.py <br>
 ├── [DOCUMENTATION.md](#Documentation)  
