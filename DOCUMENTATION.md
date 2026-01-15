@@ -10,7 +10,7 @@ V2X/
 ├── data/ - Simulation Output <br>
 │   └── [parquet & .png files](#data) <br>
 ├── src/ <br>
-│   ├── analysis/ - Data analysis scripts  
+│   ├── analysis/  
 │   │   ├── [correlation_map.py](#correlation-map) <br>
 │   │   ├── [geo_emissions_plot.py](#geo-emissions-plot)  
 │   │   ├── [geo_plots.py](#geo-plots)  
@@ -77,7 +77,7 @@ The primary function that reads the simulation results and creates the correlati
 * **Saves the Image**: It saves the final heatmap as a PNG file with high quality (150 DPI) in the output folder.
 
 # Geo Emissions Plot
-### _find_net_path_from_sumocfg
+### _find_net_path_from_sumocfg(sumo_cfg_path)
 A helper function that finds the network file used in the simulation.
 
 **Input:**
@@ -88,7 +88,7 @@ A helper function that finds the network file used in the simulation.
 
 **What it does:** It parses the SUMO configuration XML to extract the specific network file name and ensures the file exists on the disk.
 
-### _net_bbox_from_shapes
+### _net_bbox_from_shapes(net)
 Calculates the boundaries (bounding box) of the map.
 
 **Input:**
@@ -99,7 +99,7 @@ Calculates the boundaries (bounding box) of the map.
 
 **What it does:** It looks at all road shapes in the network to determine the total area size, ensuring the final plot is zoomed correctly to show the whole map.
 
-### _is_real_edge
+### _is_real_edge(edge)
 Ignores technical road segments used only inside intersections.
 
 **Input:**
@@ -110,7 +110,7 @@ Ignores technical road segments used only inside intersections.
 
 **What it does:** It ignores internal junction edges (starting with `:`) so the map only shows actual streets and highways.
 
-### compute_edge_co2_per_meter
+### compute_edge_co2_per_meter(df, edge_lengths)
 Calculates how much CO2 was emitted per meter on every road.
 
 **Input:**
@@ -122,7 +122,7 @@ Calculates how much CO2 was emitted per meter on every road.
 
 **What it does:** It groups all vehicle data by road, sums the CO2, and divides it by the road length so short and long roads can be compared fairly.
 
-### compute_edge_pollution_co2
+### compute_edge_pollution_co2(df_base, df_v2x, edge_lengths)
 Compares two scenarios to find the relative change in pollution.
 
 **Input:**
@@ -135,7 +135,7 @@ Compares two scenarios to find the relative change in pollution.
 
 **What it does:** It calculates the difference between the two scenarios. It ignores very small changes (noise) and limits extreme values so the map remains easy to read.
 
-### plot_co2_pollution_map
+### plot_co2_pollution_map(df_pollution, sumo_config, out_path, title)
 The main visual function that draws the side-by-side geographic maps.
 
 **Input:**
@@ -166,7 +166,7 @@ The central entry point that handles the file logic and runs the analysis.
 * For every available scenario (Rule-Based or RL), it calculates the pollution difference compared to the Baseline and saves a geographic plot.
 
 # Geo Plots
-### _find_net_path_from_sumocfg
+### _find_net_path_from_sumocfg(sumo_cfg_path)
 A helper function that finds the network file used in the simulation.
 
 **Input:**
@@ -177,7 +177,7 @@ A helper function that finds the network file used in the simulation.
 
 **What it does:** It reads the SUMO configuration file to find the specific network layout file needed to draw the map.
 
-### _net_bbox_from_shapes
+### _net_bbox_from_shapes(net)
 Calculates the boundaries (bounding box) of the road network.
 
 **Input:**
@@ -188,7 +188,7 @@ Calculates the boundaries (bounding box) of the road network.
 
 **What it does:** It checks the coordinates of all road shapes to determine how large the final plot should be so everything fits perfectly.
 
-### _is_real_edge
+### _is_real_edge(edge)
 Filters out internal simulation connectors.
 
 **Input:**
@@ -199,7 +199,7 @@ Filters out internal simulation connectors.
 
 **What it does:** It hides technical junction connectors (starting with `:`) so only actual streets are visible on the map.
 
-### compute_edge_min_speed
+### compute_edge_min_speed(df)
 Calculates the lowest recorded speed for every road segment.
 
 **Input:**
@@ -210,7 +210,7 @@ Calculates the lowest recorded speed for every road segment.
 
 **What it does:** It filters out stopped vehicles (0 speed), then finds the lowest speed recorded on each road to identify where traffic is slowest.
 
-### plot_min_speed_map
+### plot_min_speed_map(df, sumo_config, out_path, title)
 The primary function that draws the geographic speed map.
 
 **Input:**
@@ -227,7 +227,7 @@ The primary function that draws the geographic speed map.
 * It makes road lines thicker for high-traffic areas based on the number of "hits."
 * It adds a color bar to show the speed range in meters per second.
 
-### generate_geo_plot
+### generate_geo_plot(parquet_path, sumo_cfg_path, output_name)
 A utility function to load data and trigger a single plot.
 
 **Input:**
@@ -239,7 +239,7 @@ A utility function to load data and trigger a single plot.
 
 **What it does:** It loads the Parquet file and calls the plotting function to create a speed map for one specific simulation run.
 
-### compare_geo_plots
+### compare_geo_plots(data_dir, comparison_label, comparison_img_name)
 Creates a side-by-side comparison between two different speed maps.
 
 **Input:**
@@ -270,7 +270,7 @@ The central entry point that manages the entire geographic plotting workflow.
 
 This module is the primary engine for generating comparative performance visualizations between the Baseline, Rule-based, and RL scenarios.
 
-### plot_filename
+### plot_filename(x, y, suffix)
 A helper utility that creates consistent and clean filenames for the generated plots.
 
 **Input:**
@@ -283,7 +283,7 @@ A helper utility that creates consistent and clean filenames for the generated p
 
 **What it does:** It converts category names to lowercase and replaces spaces or special characters with underscores to ensure filenames are valid across all operating systems.
 
-### enforce_features
+### enforce_features(df, x, y)
 Ensures that the required data columns exist before attempting to plot them.
 
 **Input:**
@@ -294,7 +294,7 @@ Ensures that the required data columns exist before attempting to plot them.
 
 **What it does:** It prevents the script from crashing by raising a `ValueError` if a column is missing or if the user tries to plot a variable against itself.
 
-### balanced_sample
+### balanced_sample(df, total_points, random_state)
 Ensures that all scenarios (Baseline, Rule-based, RL) are represented equally in the plots, even if one scenario has much more data than others.
 
 **Input:**
@@ -306,7 +306,7 @@ Ensures that all scenarios (Baseline, Rule-based, RL) are represented equally in
 
 **What it does:** It takes an equal number of samples from each "run" type. This prevents the charts from being biased toward the longest-running simulation.
 
-### load_available_runs
+### load_available_runs(data_dir)
 Finds and loads all existing Parquet files in the `data/` folder.
 
 **Input:**
@@ -317,7 +317,7 @@ Finds and loads all existing Parquet files in the `data/` folder.
 
 **What it does:** It checks for the Baseline, Rule-based, and RL files. It must find at least two different runs to proceed with a comparison.
 
-### common_time_filter
+### common_time_filter(runs)
 Synchronizes the datasets so they all end at the same simulation time.
 
 **Input:**
@@ -328,7 +328,7 @@ Synchronizes the datasets so they all end at the same simulation time.
 
 **What it does:** If the Baseline simulation lasted 1000 seconds but the RL simulation only lasted 800 seconds, it trims all data to 800 seconds so the comparisons are fair.
 
-### plot_co2_band_vs_feature
+### plot_co2_band_vs_feature(df, out_dir, feature, bins, min_bin_n)
 Creates a advanced "band plot" showing the median CO2 emissions and the variability for a specific feature (like speed or acceleration).
 
 **Input:**
@@ -341,7 +341,7 @@ Creates a advanced "band plot" showing the median CO2 emissions and the variabil
 
 **What it does:** It calculates the 10th, 50th (median), and 90th percentiles of CO2 for different ranges of a feature. It shades the area between the 10th and 90th percentile to show how much emissions vary.
 
-### plot_queue_time_over_time
+### plot_queue_time_over_time(df, out_dir)
 Generates a line chart showing how vehicle waiting times change during the simulation.
 
 **Input:**
@@ -353,7 +353,7 @@ Generates a line chart showing how vehicle waiting times change during the simul
 
 **What it does:** It calculates the average time vehicles spend in queues for every second of the simulation and plots a line for each scenario to show which one reduces traffic jams best.
 
-### plot_timeloss_histogram
+### plot_timeloss_histogram(df, out_dir)
 Creates a histogram to show the distribution of time lost by vehicles.
 
 **Input:**
@@ -364,7 +364,7 @@ Creates a histogram to show the distribution of time lost by vehicles.
 
 **What it does:** It shows how many vehicles suffered specific amounts of delay. It also calculates the "median improvement" to show exactly how many seconds the V2X/RL systems saved the average driver.
 
-### plot_total_co2_pie
+### plot_total_co2_pie(df, out_dir)
 Creates a simple pie chart showing the share of total CO2 emissions for each run.
 
 **Input:**
@@ -375,7 +375,7 @@ Creates a simple pie chart showing the share of total CO2 emissions for each run
 
 **What it does:** It sums up every milligram of CO2 emitted in each scenario and displays them as percentages in a circular chart.
 
-### main()
+### main(max_points)
 The master function that coordinates the loading, sampling, and plotting process.
 
 **Input:**
@@ -395,7 +395,7 @@ Initializes the data collection and creates the storage folder.
 
 **What it does:** It creates a folder called `data` and prepares to track how cars move, stop, and wait.
 
-### collect
+### collect(time)
 Captures details for every car at the current time.
 
 **Input:**
@@ -413,7 +413,7 @@ Captures details for every car at the current time.
 * **time_loss**: Lost travel time.
 * **queue_time**: Time stuck waiting.
 
-### flush
+### flush()
 Persists buffered data to disk.
 
 **Input:**
@@ -1072,7 +1072,7 @@ Initializes the runner with the required data collection instance.
 
 **What it does:** It sets up the simulation runner and attaches a dedicated collector to monitor the environment during execution.
 
-### run_until_end
+### run_until_end()
 Executes the simulation until all trips are completed while recording data at every step.
 
 **Input:** `None`.
@@ -1086,7 +1086,7 @@ Executes the simulation until all trips are completed while recording data at ev
 * At every step, it calls `collector.collect(current_time)` to gather vehicle data.
 * Upon completion or error, it calls `collector.flush()` to save all buffered data to the disk.
 
-### run_with_steps
+### run_with_steps()
 Runs the simulation for a predefined number of steps for controlled data sampling.
 
 **Input:** `None`.
@@ -1098,7 +1098,7 @@ Runs the simulation for a predefined number of steps for controlled data samplin
 * It records vehicle performance metrics at every single step.
 * It saves all accumulated data to a file using `collector.flush()` once the loop finishes.
 
-### resolve_config
+### resolve_config()
 A utility function that automatically locates the SUMO configuration file within the project structure.
 
 **Input:**
@@ -1112,7 +1112,7 @@ A utility function that automatically locates the SUMO configuration file within
 * It verifies if the configuration file exists.
 * It raises a `FileNotFoundError` if the configuration is missing, prompting the user to provide a path or fix the directory structure.
 
-### build_env
+### build_env(config_path, gui, bsm, tls, priority, reroute)
 A utility function to create a consistent simulation environment.
 
 **Input:**
@@ -1154,7 +1154,7 @@ Initializes the RL-specific runner with a collector and a trained model.
 
 **What it does:** It sets up the execution environment to use an AI model for decision-making instead of random or fixed rules.
 
-### resolve_config
+### resolve_config()
 A utility function that locates the SUMO configuration file within the project structure.
 
 **Input:**
@@ -1166,7 +1166,7 @@ A utility function that locates the SUMO configuration file within the project s
 **What it does:** * It resolves the path to the `config/` directory relative to the script's parent folder.
 * It verifies the existence of the configuration file and raises a `FileNotFoundError` if the file is missing.
 
-### run_until_end
+### run_until_end()
 Executes the RL-controlled simulation until the scenario ends naturally.
 
 **Input:** `None`.
@@ -1179,7 +1179,7 @@ Executes the RL-controlled simulation until the scenario ends naturally.
 * It steps the environment with the predicted action and collects data at every timestamp.
 * It stops when the simulation is `terminated` or `truncated` and then calls `collector.flush()` to save the RL results.
 
-### run_with_steps
+### run_with_steps()
 Runs the RL-controlled simulation for a fixed number of steps.
 
 **Input:** `None`.
@@ -1191,7 +1191,7 @@ Runs the RL-controlled simulation for a fixed number of steps.
 * The AI model controls simulation features at every step.
 * It records all metrics to the collector and saves them to a Parquet file at the end of the step count.
 
-### build_env (Helper)
+### build_env(config_path, rl, tls, bsm, priority, reroute)
 A utility function to create the RL-specific environment.
 
 **Input:**
