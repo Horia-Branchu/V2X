@@ -31,7 +31,7 @@ Core concepts:
 |------------|------|
 | **Eclipse SUMO** | Microscopic traffic simulator |
 | **NetEdit** | Network editor for roads, junctions, and signals |
-| **Python + TraCI** | Logic layer for V2X behavior and dynamic TLS |
+| **Python + Sumolib** | Logic layer for V2X behavior and dynamic TLS |
 | **Network** | City of Cluj-Napoca (configurable) |
 | **SUMO Version** | 1.24.0 |
 | **Python Version** | 3.x |
