@@ -5,12 +5,14 @@ from pathlib import Path
 # global definition
 baseline_filename = "vehicle_state_baseline.parquet"
 v2x_filename = "vehicle_state_v2x.parquet"
+rule_based_filename = "vehicle_state_rule_based.parquet"
 rl_filename = "vehicle_state_rl.parquet"
-data_dir_name = "../data"
+data_dir_name = "data"
+DEFAULT_MAX_POINTS = None
 
 class DataCollector:
     def __init__(self,output_filename,reset_on_start=True):
-        project_root = Path(__file__).resolve().parents[1]
+        project_root = Path(__file__).resolve().parents[2]
         self.out_dir = project_root / data_dir_name
         self.buffer = []
         # making the directory in a file named data
