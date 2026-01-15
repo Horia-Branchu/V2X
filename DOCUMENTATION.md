@@ -2,39 +2,39 @@
 
 ## Project Structure
 
-V2X/
+V2X/  
 ├── config/ <br>
 │   ├── simulation.sumocfg <br>
 │   ├── generate_all_vehicles_scripts.py <br>
 │   ├── time_to_run.txt <br>
 ├── src/ <br>
-│   ├── analysis/ - Data analysis scripts
-│   │   ├── correlation_map.py
-│   │   ├── geo_emissions_plot.py
-│   │   ├── geo_plots.py
-│   │   └── plots.py
-│   ├── data/
-│   │   └── vehicles.csv
-│   ├── datacollector/
-│   │   └── data_collector.py
-│   ├── environment/
-│   │   └── [base_sumo_env.py](#base-sumo-environment)
-│   ├── features/
-│   │   ├── [base_v2x_feature.py](#base-v2x-feature)
-│   │   ├── bsm_feature.py
-│   │   ├── [dynamic_tls.py](#dynamic-tls)
-│   │   └── [priority_corridor.py](#priority-corridor-feature)
-│   ├── runners/
-│   │   ├── collector_runner.py
-│   │   ├── rl_collector_runner.py
-│   │   ├── [rl_tester.py](#rl-tester)
-│   │   ├── [rl_trainee.py](#rl-trainee)
-│   │   └── [simulation_runner.py](#simulation-runner-class)
+│   ├── analysis/ - Data analysis scripts  
+│   │   ├── correlation_map.py  
+│   │   ├── geo_emissions_plot.py  
+│   │   ├── geo_plots.py  
+│   │   └── plots.py  
+│   ├── data/  
+│   │   └── vehicles.csv  
+│   ├── datacollector/  
+│   │   └── data_collector.py  
+│   ├── environment/  
+│   │   └── [base_sumo_env.py](#base-sumo-environment)  
+│   ├── features/  
+│   │   ├── [base_v2x_feature.py](#base-v2x-feature)  
+│   │   ├── bsm_feature.py  
+│   │   ├── [dynamic_tls.py](#dynamic-tls)  
+│   │   └── [priority_corridor.py](#priority-corridor-feature)  
+│   ├── runners/  
+│   │   ├── collector_runner.py  
+│   │   ├── rl_collector_runner.py  
+│   │   ├── [rl_tester.py](#rl-tester)  
+│   │   ├── [rl_trainee.py](#rl-trainee)  
+│   │   └── [simulation_runner.py](#simulation-runner-class)  
 │   └── ui/ <br>
-│       ├── progress_bar.py
-│       └── [terminal_display.py](#terminal-display)
+│       ├── progress_bar.py  
+│       └── [terminal_display.py](#terminal-display)  
 ├── main.py <br>
-├── [DOCUMENTATION.md](#Documentation)
+├── [DOCUMENTATION.md](#Documentation)   
 
 
 
