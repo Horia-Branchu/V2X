@@ -668,6 +668,7 @@ terminal_display.update("ENV", "Simulation running...")
 terminal_display.render()
 ```
 
+<<<<<<< HEAD
 # RL Tester
 
 ## Overview
@@ -815,6 +816,7 @@ Runs a short deterministic rollout to validate the trained policy.
 - Stop on episode termination
 
 ---
+
 # Progress Bar
 
 ### Constructor
@@ -897,6 +899,153 @@ def __init__(self, logger: logging.Logger)
 - Creates a 50-character bar with filled (█) and empty (-) segments
 - Returns formatted string with color-coded bar and percentage
 
+# RL Tester
+
+## Overview
+Runs a SUMO Reinforcement Learning simulation using a **pre-trained PPO model**.
+Exactly **one feature** (TLS or BSM) must be selected, with optional GUI support.
+
+---
+
+## Environment Configuration
+CUDA is disabled to force CPU-only execution.
+
+---
+
+## Command-Line Interface
+
+### Input Arguments
+- `--tls` (bool): Run Traffic Light System RL
+- `--bsm` (bool): Run Basic Safety Message RL
+- `--gui` (bool): Enable SUMO GUI
+
+### Constraints
+- Only **one** feature may be selected
+- Invalid selections terminate execution
+
+### Exit Codes
+- `68`: No feature selected
+- `67`: Multiple features selected
+- `56`: Model not found
+
+---
+
+## Environment Initialization
+
+### BaseSumoEnvironment
+Initializes the SUMO environment in RL mode.
+
+**Key Parameters:**
+- `sumo_config` (str): `config/simulation.sumocfg`
+- `tls`, `bsm` (bool): Feature toggles
+- `gui` (bool): GUI enablement
+- `rl` (bool): Enabled
+
+---
+
+## Model Loading
+Loads a PPO model named:
+- `tls_feature_model` or `bsm_feature_model`
+
+Execution stops if the model is missing.
+
+---
+
+## Simulation Execution
+Runs a deterministic PPO-controlled simulation until termination.
+
+**Tracked:**
+- Total reward
+- Total steps
+
+---
+
+## Cleanup and Output
+Closes the environment and prints final metrics.
+
+---
+
+# RL Trainee
+## Overview
+This script trains and evaluates a Reinforcement Learning (RL) agent for a **single SUMO feature** (TLS, BSM, or Priority) using the PPO algorithm from Stable-Baselines3. Training is time-bounded using a custom callback.
+
+---
+
+## Environment Configuration
+CUDA is disabled to enforce CPU-only execution.
+
+---
+
+## Command-Line Interface
+
+### Input Arguments
+- `--tls` (bool): Train Traffic Light System RL
+- `--bsm` (bool): Train Basic Safety Message RL
+- `--priority` (bool): Train Priority-based RL
+
+### Constraints
+- Exactly **one** feature must be specified
+- Invalid selections cause controlled termination
+
+### Exit Codes
+- `68`: No feature specified
+- `67`: Multiple features specified
+
+---
+
+## StopAtTimeCallback
+
+### Purpose
+Custom PPO callback that stops training when a predefined wall-clock time is reached.
+
+**Input:**
+- `stop_time` (datetime): Absolute time to stop training
+
+**What it does:**
+- Terminates training gracefully once the stop time is exceeded
+
+---
+
+## Environment Initialization
+
+### BaseSumoEnvironment
+Creates a SUMO RL environment with only the selected feature enabled.
+
+**Key Parameters:**
+- `sumo_config` (str): SUMO configuration file
+- `tls`, `bsm`, `priority` (bool): Feature toggles
+- `gui` (bool): Disabled
+- `rl` (bool): Enabled
+
+---
+
+## Training Phase
+
+### PPO Training
+Initializes and trains a PPO agent with fixed hyperparameters.
+
+**Highlights:**
+- Policy: `MlpPolicy`
+- Device: CPU
+- Training duration: Time-limited (up to configured stop time)
+- Timesteps: Effectively unbounded, stopped via callback
+
+**Output:**
+- Saved model: `<feature>_feature_model`
+
+---
+
+## Testing Phase
+
+### Post-Training Evaluation
+Runs a short deterministic rollout to validate the trained policy.
+
+**Process:**
+- Reset environment
+- Execute up to 1000 steps
+- Stop on episode termination
+
+---
 
 # Simulation Runner Class
 
