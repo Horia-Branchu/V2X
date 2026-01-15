@@ -4,9 +4,6 @@
 
 V2X/  
 ├── [config/](#config-directory) <br>
-│   ├── simulation.sumocfg <br>
-│   ├── generate_all_vehicles_scripts.py <br>
-│   ├── time_to_run.txt <br>
 ├── data/ <br>
 │   └── [parquet & .png files](#data) <br>
 ├── src/ <br>
