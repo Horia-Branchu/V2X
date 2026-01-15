@@ -534,7 +534,7 @@ Sets up internal state for both rule-based and RL modes.
     - `RETURN_DISTANCE`: Distance (200m) after which yielding vehicles return to normal behavior.
     - `LANE_FREE_DIST`: Minimum clearance (8m) required for a safe yield merge.
 
-### get_observation_space
+### get_observation_space()
 Defines the observation space for the priority feature.
 
 **Input:** `None`
@@ -551,7 +551,7 @@ In RL mode, it returns a Box space representing:
 5. `Priority Queue`: Number of priority vehicles currently waiting.
 6. `Other Queue`: Number of non-priority vehicles waiting.
 
-### get_action_space
+### get_action_space()
 Defines the available actions for the priority feature.
 
 **Input:** `None`
@@ -562,7 +562,7 @@ Defines the available actions for the priority feature.
 **What it does:**
 Makes one TraCI pass to cache positions and edges for all vehicles and updates `_emergency_vehicle_ids` based on `PRIORITY_TYPE`.
 
-### get_observation
+### get_observation()
 Collects the current state of the priority corridor for the RL agent.
 
 **Input:** `None`
@@ -575,7 +575,7 @@ Collects the current state of the priority corridor for the RL agent.
 - Queries the traffic light for its current phase and queue lengths.
 - Normalizes all values (e.g., dividing distance by `max_distance`, count by 10) and clips them between 0.0 and 1.0.
 
-### calculate_reward
+### calculate_reward()
 Computes the reward signal for the RL agent based on priority vehicle efficiency.
 
 **Input:** `None`
@@ -591,7 +591,7 @@ Computes the reward signal for the RL agent based on priority vehicle efficiency
     - `-1.0` for switching traffic light phases (encourages stability).
 Counts vehicles per lane on the given edge using `traci.lane.getLastStepVehicleIDs` and returns the lane index with the fewest vehicles. If TraCI fails, falls back to lane `0`.
 
-### _cache_positions_and_detect_emergencies
+### _cache_positions_and_detect_emergencies()
 **Input:** `vehicle_ids` (Iterable[str])
 
 **Output:** `positions` (dict), `edges` (dict), `edge_to_vehicle_ids` (dict)
