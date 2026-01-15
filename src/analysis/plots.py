@@ -33,7 +33,7 @@ def balanced_sample(df: pd.DataFrame, total_points: int | None, random_state: in
     if "run" not in df.columns:
         raise ValueError("Column 'run' is missing; cannot stratify.")
 
-    if len(df) <= total_points:
+    if total_points is None or len(df) <= total_points:
         return df
 
     counts = df["run"].value_counts()
